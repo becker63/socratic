@@ -24,6 +24,8 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "framer-motion": "^12.34.3",
+    "mermaid": "^11.12.3",
+    "mitt": "^3.0.1",
     "openai": "^6.24.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

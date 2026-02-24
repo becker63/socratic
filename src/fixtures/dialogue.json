@@ -1,0 +1,112 @@
+{
+  "topic": "Zero trust in microservices",
+  "conversation": [
+    {
+      "speaker": "security_engineer",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": "Propose a zero-trust baseline using SPIFFE/SPIRE for cryptographic identity (SVIDs), Envoy sidecars for mTLS via SDS, and centralized policy with OPA (Envoy external authorization). Enforce short-lived mTLS identities, mutual TLS between services, and an ingress/egress gateway to terminate external JWTs, translate to SPIFFE identities, and apply coarse-grained controls. Expect strict rotation, automated CA rollovers, and deny-by-default policies.",
+          "language": null,
+          "items": null
+        }
+      ]
+    },
+    {
+      "speaker": "application_engineer",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": "I agree on cryptographic identities but push back on immediate mesh-wide sidecars: cost and developer friction (local dev, CI times, increased resource use). Suggest an incremental approach: start with ingress gateway translating external JWTs to SPIFFE (so internal services can be identified) and use non-intrusive verification (JWT or mTLS at gateway) before rolling sidecars cluster-wide. Also highlight need for developer SDKs and local tooling to fetch test SVIDs or fall back to signed JWTs for local dev.",
+          "language": null,
+          "items": null
+        }
+      ]
+    },
+    {
+      "speaker": "security_engineer",
+      "blocks": [
+        {
+          "type": "bullet_list",
+          "content": null,
+          "language": null,
+          "items": [
+            "Concrete rollout plan: deploy SPIRE server + node/workload agents → enable Envoy SDS to fetch SVIDs → configure Envoy mTLS for service-to-service with permissive mode first → attach OPA as Envoy external_authorization for fine-grained Rego policies.",
+            "Safety/rollback mechanisms: use canary traffic shifting (Istio/Envoy) and permissive mTLS to log handshake failures before enforcing; automated health checks to detect SVID expiration/rotation failures and rollback to JWT-gateway if >X% handshakes fail.",
+            "Failure cases to monitor: SPIRE server or agent outage preventing SVID issuance (bootstrap problem), CA rotation rollback mishandled causing mass handshake failures, OPA policy bugs causing 503 denials."
+          ]
+        }
+      ]
+    },
+    {
+      "speaker": "application_engineer",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": "From dev perspective, those failure cases are real: local test harness must emulate SPIRE or accept signed JWTs. Mitigations: provide a lightweight 'local SPIRE' binary or use short-lived dev JWTs with automated exchange at CI. Enforce permissive mode on a per-namespace basis, and require reproducible e2e tests that exercise OPA Rego policies in CI (rego unit tests + integration with Conftest).",
+          "language": null,
+          "items": null
+        }
+      ]
+    },
+    {
+      "speaker": "security_engineer",
+      "blocks": [
+        {
+          "type": "code",
+          "content": "apiVersion: spiffe.io/v1\nkind: WorkloadEntry\nmetadata:\n  name: orders-svc\nspec:\n  spiffeID: \"spiffe://example.org/ns/orders/sa/orders\"\n  selectors:\n    - type: k8s_psa\n      value: \"namespace:orders,sa:orders\"\n  dns: [\"orders.svc.cluster.local\"]",
+          "language": "yaml",
+          "items": null
+        },
+        {
+          "type": "paragraph",
+          "content": "Use workload entries like above so SPIRE binds Kubernetes service accounts to SPIFFE IDs. Start with cluster-wide permissive SDS config on Envoy and move to strict mTLS once metrics show <1% handshake failures. Automate SVID rotation every few minutes to hours depending on risk profile.",
+          "language": null,
+          "items": null
+        }
+      ]
+    },
+    {
+      "speaker": "application_engineer",
+      "blocks": [
+        {
+          "type": "bullet_list",
+          "content": null,
+          "language": null,
+          "items": [
+            "Developer workflow: add a 'dev-mode' flag that fetches either a dev SVID from local SPIRE or exchanges a signed JWT at ingress to get a short-lived test SVID; document how to run envoy sidecar locally via docker-compose.",
+            "CI pipeline: run Rego unit tests (opa test), run integration tests with permissive mTLS, gate promotion on policy test pass and <0.5% connection failures in canary.",
+            "Operational constraints: set CPU/memory requests for sidecars, tune Envoy timeouts and retries (circuit breakers) to limit cascading failures; use PodDisruptionBudget during rollout."
+          ]
+        }
+      ]
+    },
+    {
+      "speaker": "security_engineer",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": "Monitoring and emergency controls: instrument SPIRE agent/server health, Envoy TLS handshake metrics, OPA deny/allow rate, and use Prometheus alerting. Enforce circuit breakers (Istio DestinationRule or Envoy) and implement a fallback policy in the ingress gateway to accept JWTs if SPIRE cluster health drops below threshold. This is an explicit trade-off: temporary relaxation of zero-trust to preserve availability.",
+          "language": null,
+          "items": null
+        }
+      ]
+    },
+    {
+      "speaker": "application_engineer",
+      "blocks": [
+        {
+          "type": "bullet_list",
+          "content": null,
+          "language": null,
+          "items": [
+            "Agreement and outstanding trade-offs: implement 3-stage rollout (gateway-JWT → permissive mTLS with logging → strict mTLS + OPA enforced), automate canary rollback on handshake/deny spikes, provide SDKs for local dev and CI integration.",
+            "Remaining decisions: threshold values for 'health degrade' (e.g., 5% handshake failure window), resource budget per sidecar, and which namespaces get first-class enforcement vs long-term exceptions (batch jobs, legacy services).",
+            "Responsibility matrix: Security owns SPIRE/OPA policies and alerts; App teams own service entries, local tooling, and Rego tests; SRE manages rollout automation and Prometheus/Grafana dashboards."
+          ]
+        }
+      ]
+    }
+  ],
+  "mermaid": "flowchart LR\n  Internet[\"External Clients\"] -->|JWT| IngressGW[\"Ingress Gateway (Envoy)\"]\n  IngressGW -->|Translate JWT->SVID| SPIREServer[\"SPIRE Server (CA)\"]\n  SPIREServer --> SPIREAgent[\"SPIRE Agent (node)\"]\n  IngressGW -->|mTLS| EnvoySidecar1[\"Envoy Sidecar (svc A)\"]\n  EnvoySidecar1 -->|mTLS| ServiceA[\"Service A\"]\n  EnvoySidecar1 -->|Envoy ext_authz| OPA[\"OPA (ext_authz)\"]\n  ServiceA -->|calls| EnvoySidecar2[\"Envoy Sidecar (svc B)\"]\n  EnvoySidecar2 -->|mTLS| ServiceB[\"Service B\"]\n  SPIREAgent ---|provides SVID via SDS| EnvoySidecar1\n  SPIREAgent ---|provides SVID via SDS| EnvoySidecar2\n  OPA -->|decision| EnvoySidecar2\n  Prom[\"Prometheus/Grafana\"] -->|scrape| EnvoySidecar1\n  Prom -->|scrape| SPIREAgent\n  Prom -->|alert| SRE[\"SRE / Playbook\"]\n  classDef infra fill:#f9f,stroke:#333;\n  class SPIREServer,SPIREAgent,OPA,Prom infra"
+}

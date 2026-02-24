@@ -1,65 +1,98 @@
 import React from "react";
-import { Box, Button, Heading, Input, Text, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Heading,
+  Input,
+  Text,
+  VStack,
+  Grid,
+} from "@chakra-ui/react";
 import {
   PromptRequestSchema,
   DialogueSchema,
   type Dialogue,
 } from "../shared/schemas";
+import { Pane } from "./components/Pane";
+import { MermaidRenderer } from "./components/MermaidRenderer";
+import { replayDialogue } from "./replay/controller";
+import fixtureData from "./fixtures/dialogue.json";
+
+const USE_STATIC_FIXTURE = true;
 
 export function App() {
   const [prompt, setPrompt] = React.useState("Zero trust in microservices");
-  const [data, setData] = React.useState<Dialogue | null>(null);
+  const [dialogue, setDialogue] = React.useState<Dialogue | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [validated, setValidated] = React.useState(false);
 
-  async function run() {
+  async function generate() {
     setLoading(true);
     setError(null);
-    setData(null);
+    setValidated(false);
 
     try {
-      const body = PromptRequestSchema.parse({ prompt });
+      let parsed: Dialogue;
 
-      const resp = await fetch("/api/dialogue", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      if (USE_STATIC_FIXTURE) {
+        parsed = DialogueSchema.parse(fixtureData);
+      } else {
+        const body = PromptRequestSchema.parse({ prompt });
 
-      const json = await resp.json();
-      const parsed = DialogueSchema.parse(json);
-      setData(parsed);
+        const resp = await fetch("/api/dialogue", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        if (!resp.ok) throw new Error(await resp.text());
+        const json = await resp.json();
+        parsed = DialogueSchema.parse(json);
+      }
+
+      setDialogue(parsed);
+      setValidated(true);
+
+      // start replay after state set
+      queueMicrotask(() => replayDialogue(parsed));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      setDialogue(null);
     } finally {
       setLoading(false);
     }
   }
 
+  async function replay() {
+    if (!dialogue) return;
+    await replayDialogue(dialogue);
+  }
+
   return (
     <Box p="6">
       <VStack align="stretch" gap="4">
-        <Heading size="lg">Security vs Application Engineer</Heading>
-        <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} />
-        <Button onClick={run} loading={loading}>
-          Generate
-        </Button>
+        <Heading size="lg">Socratic</Heading>
 
+        <Box display="flex" gap="3">
+          <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+          <Button onClick={generate} loading={loading}>
+            Generate
+          </Button>
+          <Button onClick={replay} disabled={!dialogue}>
+            Replay
+          </Button>
+        </Box>
+
+        {validated && <Text fontSize="sm">✅ Schema Validated Output</Text>}
         {error && <Text color="red.500">{error}</Text>}
 
-        {data && (
-          <Box>
-            {data.conversation.map((m, i) => (
-              <Text key={i}>
-                <strong>{m.speaker}:</strong> {m.message}
-              </Text>
-            ))}
-            <Box mt="4">
-              <Heading size="sm">Mermaid Diagram</Heading>
-              <pre>{data.mermaid}</pre>
-            </Box>
-          </Box>
-        )}
+        <Grid templateColumns="1fr 1fr" gap="4">
+          <Pane kind="security" title="Security Engineer" />
+          <Pane kind="application" title="Application Engineer" />
+        </Grid>
+
+        {dialogue && <MermaidRenderer code={dialogue.mermaid} />}
       </VStack>
     </Box>
   );
