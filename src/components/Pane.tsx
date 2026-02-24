@@ -1,42 +1,24 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Box, Text } from "@chakra-ui/react";
-import type { Turn } from "../../shared/schemas";
-import { bus, type Pane as PaneKind } from "../replay/bus";
 import { MdxRenderer } from "./MdxRenderer";
+import { bus } from "../replay/bus";
 
-function speakerMatches(kind: PaneKind, speaker: Turn["speaker"]) {
-  return (
-    (kind === "security" && speaker === "security_engineer") ||
-    (kind === "application" && speaker === "application_engineer")
-  );
-}
+export type LayoutBlock = {
+  id: string;
+  speaker: "security" | "application";
+  mdx: string;
+  height?: number;
+};
 
-export function Pane({ kind, title }: { kind: PaneKind; title: string }) {
-  const [turns, setTurns] = React.useState<Turn[]>([]);
-  const scrollRef = React.useRef<HTMLDivElement | null>(null);
-
-  React.useEffect(() => {
-    const onStart = () => setTurns([]);
-    const onAppend = (turn: Turn) => {
-      if (!speakerMatches(kind, turn.speaker)) return;
-      setTurns((prev) => [...prev, turn]);
-    };
-
-    bus.on("REPLAY_START", onStart);
-    bus.on("APPEND_TURN", onAppend);
-
-    return () => {
-      bus.off("REPLAY_START", onStart);
-      bus.off("APPEND_TURN", onAppend);
-    };
-  }, [kind]);
-
-  React.useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight });
-  }, [turns.length]);
-
+export function Pane({
+  kind,
+  title,
+  blocks,
+}: {
+  kind: "security" | "application";
+  title: string;
+  blocks: LayoutBlock[];
+}) {
   return (
     <Box
       display="flex"
@@ -57,13 +39,52 @@ export function Pane({ kind, title }: { kind: PaneKind; title: string }) {
       </Box>
 
       {/* Content */}
-      <Box ref={scrollRef} flex="1" minH="0" overflowY="auto" px="4" py="3">
-        {turns.map((t, i) => (
-          <Box key={`${t.speaker}-${i}`} mb="3">
-            <MdxRenderer content={t.mdx} />
-          </Box>
-        ))}
+      <Box flex="1" minH="0" px="4" py="3">
+        {blocks.map((block) => {
+          const isMine = block.speaker === kind;
+
+          return (
+            <Box key={block.id} mb="3">
+              {isMine ? (
+                <MeasuredBubble id={block.id} content={block.mdx} />
+              ) : (
+                // Spacer mirrors measured height
+                <Box height={block.height ? `${block.height}px` : "0px"} />
+              )}
+            </Box>
+          );
+        })}
       </Box>
+    </Box>
+  );
+}
+
+function MeasuredBubble({ id, content }: { id: string; content: string }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+
+    const height = ref.current.offsetHeight;
+
+    bus.emit("TURN_RENDERED", {
+      id,
+      height,
+    });
+  }, [id]);
+
+  return (
+    <Box
+      ref={ref}
+      maxW="90%"
+      borderWidth="1px"
+      borderRadius="md"
+      px="3"
+      py="2"
+      fontSize="sm"
+      lineHeight="1.5"
+    >
+      <MdxRenderer content={content} />
     </Box>
   );
 }

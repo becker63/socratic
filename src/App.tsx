@@ -1,21 +1,37 @@
-import React, { useEffect } from "react";
-import { Box, Button, Input } from "@chakra-ui/react";
+import React, { useEffect, useRef, useState } from "react";
+import { Box, Button, Input, Text } from "@chakra-ui/react";
 import {
   PromptRequestSchema,
   DialogueSchema,
   type Dialogue,
+  type Turn,
 } from "../shared/schemas";
-import { Pane } from "./components/Pane";
 import { replayDialogue } from "./replay/controller";
+import { bus } from "./replay/bus";
 import fixtureData from "./fixtures/dialogue.json";
+import { MdxRenderer } from "./components/MdxRenderer";
 
 const USE_STATIC_FIXTURE = true;
 
+type LayoutBlock = {
+  id: string;
+  speaker: "security" | "application";
+  mdx: string;
+  height?: number;
+};
+
+function mapSpeaker(s: Turn["speaker"]): "security" | "application" {
+  return s === "security_engineer" ? "security" : "application";
+}
+
 export function App() {
-  const [prompt, setPrompt] = React.useState("Zero trust in microservices");
-  const [dialogue, setDialogue] = React.useState<Dialogue | null>(null);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [prompt, setPrompt] = useState("Zero trust in microservices");
+  const [dialogue, setDialogue] = useState<Dialogue | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [blocks, setBlocks] = useState<LayoutBlock[]>([]);
+
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   async function generate() {
     setLoading(true);
@@ -27,11 +43,15 @@ export function App() {
       if (USE_STATIC_FIXTURE) {
         parsed = DialogueSchema.parse(fixtureData);
       } else {
-        const body = PromptRequestSchema.parse({ prompt });
+        const body = PromptRequestSchema.parse({
+          prompt,
+        });
 
         const resp = await fetch("/api/dialogue", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+          },
           body: JSON.stringify(body),
         });
 
@@ -55,16 +75,97 @@ export function App() {
   }
 
   useEffect(() => {
+    function onStart() {
+      setBlocks([]);
+    }
+
+    function onAppend(turn: Turn) {
+      setBlocks((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          speaker: mapSpeaker(turn.speaker),
+          mdx: turn.mdx,
+        },
+      ]);
+    }
+
+    function onRendered({ id, height }: { id: string; height: number }) {
+      setBlocks((prev) =>
+        prev.map((b) => (b.id === id ? { ...b, height } : b)),
+      );
+    }
+
+    bus.on("REPLAY_START", onStart);
+    bus.on("APPEND_TURN", onAppend);
+    bus.on("TURN_RENDERED", onRendered);
+
+    return () => {
+      bus.off("REPLAY_START", onStart);
+      bus.off("APPEND_TURN", onAppend);
+      bus.off("TURN_RENDERED", onRendered);
+    };
+  }, []);
+
+  useEffect(() => {
     if (dialogue) {
       replayDialogue(dialogue);
     }
   }, [dialogue]);
 
+  const lastAppendedIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (error) {
-      console.error(error);
+    function onStart() {
+      setBlocks([]);
+      lastAppendedIdRef.current = null;
     }
-  }, [error]);
+
+    function onAppend(turn: Turn) {
+      const id = crypto.randomUUID();
+
+      lastAppendedIdRef.current = id;
+
+      setBlocks((prev) => [
+        ...prev,
+        {
+          id,
+          speaker: mapSpeaker(turn.speaker),
+          mdx: turn.mdx,
+        },
+      ]);
+    }
+
+    function onRendered({ id, height }: { id: string; height: number }) {
+      setBlocks((prev) =>
+        prev.map((b) => (b.id === id ? { ...b, height } : b)),
+      );
+    }
+
+    bus.on("REPLAY_START", onStart);
+    bus.on("APPEND_TURN", onAppend);
+    bus.on("TURN_RENDERED", onRendered);
+
+    return () => {
+      bus.off("REPLAY_START", onStart);
+      bus.off("APPEND_TURN", onAppend);
+      bus.off("TURN_RENDERED", onRendered);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!lastAppendedIdRef.current) return;
+
+    const el = scrollRef.current;
+    if (!el) return;
+
+    requestAnimationFrame(() => {
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+  }, [blocks]);
 
   return (
     <Box
@@ -85,7 +186,7 @@ export function App() {
       >
         <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} />
 
-        <Button colorScheme="blue" onClick={generate} loading={loading}>
+        <Button colorScheme="blue" onClick={generate} isLoading={loading}>
           Generate
         </Button>
 
@@ -95,10 +196,75 @@ export function App() {
       </Box>
 
       {/* Debate Surface */}
-      <Box flex="1" display="grid" gridTemplateColumns="1fr 1fr" minH="0">
-        <Pane kind="security" title="Security Engineer" />
-        <Pane kind="application" title="Application Engineer" />
+      <Box ref={scrollRef} flex="1" overflowY="auto" minH="0">
+        {blocks.map((block) => (
+          <TurnRow key={block.id} block={block} />
+        ))}
       </Box>
+    </Box>
+  );
+}
+
+function TurnRow({ block }: { block: LayoutBlock }) {
+  return (
+    <Box display="grid" gridTemplateColumns="1fr 1fr" px="4" py="2">
+      <Box>
+        {block.speaker === "security" ? (
+          <MeasuredBubble id={block.id} content={block.mdx} />
+        ) : (
+          <Box height={block.height ? `${block.height}px` : "0px"} />
+        )}
+      </Box>
+
+      <Box>
+        {block.speaker === "application" ? (
+          <MeasuredBubble id={block.id} content={block.mdx} />
+        ) : (
+          <Box height={block.height ? `${block.height}px` : "0px"} />
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+function MeasuredBubble({ id, content }: { id: string; content: string }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+
+    const el = ref.current;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const height = entry.contentRect.height;
+
+        bus.emit("TURN_RENDERED", {
+          id,
+          height,
+        });
+      }
+    });
+
+    observer.observe(el);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [id]);
+
+  return (
+    <Box
+      ref={ref}
+      maxW="90%"
+      borderWidth="1px"
+      borderRadius="md"
+      px="3"
+      py="2"
+      fontSize="sm"
+      lineHeight="1.5"
+    >
+      <MdxRenderer content={content} />
     </Box>
   );
 }

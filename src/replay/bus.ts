@@ -7,6 +7,12 @@ export type Events = {
   REPLAY_START: void;
   APPEND_TURN: Turn;
   REPLAY_COMPLETE: void;
+
+  // NEW
+  TURN_RENDERED: {
+    id: string;
+    height: number;
+  };
 };
 
 export const bus = mitt<Events>();
