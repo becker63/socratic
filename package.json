@@ -1,0 +1,32 @@
+{
+  "name": "socratic",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev:server": "bun --watch server.ts",
+    "dev:client": "vite",
+    "dev": "concurrently -k -n server,client -c blue,green \"bun run dev:server\" \"bun run dev:client\""
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "concurrently": "^9.2.1",
+    "vite": "^7.3.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@chakra-ui/react": "^3.33.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "framer-motion": "^12.34.3",
+    "openai": "^6.24.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "zod": "^4.3.6"
+  }
+}
