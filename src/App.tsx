@@ -14,7 +14,6 @@ import {
   type Dialogue,
 } from "../shared/schemas";
 import { Pane } from "./components/Pane";
-import { MermaidRenderer } from "./components/MermaidRenderer";
 import { replayDialogue } from "./replay/controller";
 import fixtureData from "./fixtures/dialogue.json";
 
@@ -39,7 +38,6 @@ export function App() {
         parsed = DialogueSchema.parse(fixtureData);
       } else {
         const body = PromptRequestSchema.parse({ prompt });
-
         const resp = await fetch("/api/dialogue", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -47,14 +45,11 @@ export function App() {
         });
 
         if (!resp.ok) throw new Error(await resp.text());
-        const json = await resp.json();
-        parsed = DialogueSchema.parse(json);
+        parsed = DialogueSchema.parse(await resp.json());
       }
 
       setDialogue(parsed);
       setValidated(true);
-
-      // start replay after state set
       queueMicrotask(() => replayDialogue(parsed));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -91,8 +86,6 @@ export function App() {
           <Pane kind="security" title="Security Engineer" />
           <Pane kind="application" title="Application Engineer" />
         </Grid>
-
-        {dialogue && <MermaidRenderer code={dialogue.mermaid} />}
       </VStack>
     </Box>
   );

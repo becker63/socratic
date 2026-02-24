@@ -11,27 +11,49 @@ const client = new OpenAI({
 const SYSTEM = `
 You generate a structured architectural debate between two engineer archetypes.
 
-OUTPUT RULES (strict):
-- Output MUST match the provided JSON schema exactly. Do not add extra keys.
-- conversation must alternate speakers. Start with security_engineer.
-- Each speaker must appear 3–5 turns total (6–10 turns overall).
-- Each turn must have 1–3 blocks.
-- Blocks must be one of:
-  - paragraph: concise, specific, no fluff
-  - bullet_list: concrete steps, risks, constraints
-  - code: short config/snippet if helpful (language must be set)
+Return JSON that matches the provided schema exactly.
+
+STRUCTURE:
+- topic: string
+- turns: array of objects
+    - speaker: "security_engineer" | "application_engineer"
+    - mdx: string (valid markdown / MDX content)
+
+CONVERSATION RULES:
+- The first turn must be from "security_engineer".
+- Speakers must strictly alternate.
+- Each speaker must contribute 3–5 turns.
+- Total turns: 6–10.
+- The debate must include real disagreement and trade-offs.
+- Avoid generic statements.
 
 CONTENT RULES:
-- Enforce real disagreement and trade-offs (security vs developer friction).
-- Avoid generic statements. Always cite concrete mechanisms (e.g., mTLS/SPIFFE, OPA, gateways, rollout modes, failure cases).
-- Mermaid diagram MUST reflect the architecture discussed.
-- mermaid field MUST contain raw Mermaid syntax only (no backticks, no markdown fences).
+- The "mdx" field must contain valid markdown.
+- Allowed markdown constructs:
+    - paragraphs
+    - bullet lists
+    - headings
+    - fenced code blocks
+    - mermaid fenced diagrams
+- Do not include markdown fences outside the mdx string.
+- Do not include commentary outside the JSON response.
+- Do not include extra keys.
 
-BLOCK RULES:
-- For type="paragraph": set content to a string, language=null, items=null.
-- For type="code": set content to string, language to a string, items=null.
-- For type="bullet_list": set items to array of strings, content=null, language=null.
-- All keys must be present in every block.
+MERMAID RULES:
+- If including a diagram, use a fenced code block with language "mermaid".
+- Always begin diagrams with: flowchart LR
+- Keep diagrams minimal.
+- Do not use:
+    - click directives
+    - classDef
+    - note over
+    - sequenceDiagram
+- Ensure valid Mermaid syntax.
+
+STYLE:
+- Technical but concise.
+- Cite concrete mechanisms (e.g., SPIFFE, OPA, gateways, rollout modes, failure cases).
+- Each turn should respond directly to the previous one.
 `.trim();
 
 function json(data: unknown, init?: ResponseInit) {
@@ -43,90 +65,36 @@ function json(data: unknown, init?: ResponseInit) {
 
 function writeFixture(dialogue: unknown) {
   const path = "./src/fixtures/dialogue.json";
-
-  try {
-    // Ensure directory exists
-    mkdirSync(dirname(path), { recursive: true });
-
-    writeFileSync(path, JSON.stringify(dialogue, null, 2), "utf-8");
-    console.log(`💾 Fixture written to ${path}`);
-  } catch (err) {
-    console.error("❌ Failed to write fixture:", err);
-  }
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(dialogue, null, 2), "utf-8");
 }
 
 async function handleDialogue(req: Request) {
-  const requestStart = performance.now();
-  console.log("\n==============================");
-  console.log("📥 Incoming /api/dialogue request");
-
   const body = PromptRequestSchema.parse(await req.json());
-  console.log("📝 Prompt:", body.prompt);
 
-  const openaiStart = performance.now();
-  console.log("🚀 Calling OpenAI...");
+  const start = performance.now();
 
-  let response;
-  try {
-    response = await client.responses.parse({
-      model: "gpt-5-mini",
-      input: [
-        { role: "system", content: SYSTEM },
-        { role: "user", content: `Topic: ${body.prompt}` },
-      ],
-      text: {
-        format: zodTextFormat(DialogueSchema, "dialogue"),
-      },
-    });
-  } catch (err) {
-    console.error("❌ OpenAI call failed:", err);
-    throw err;
-  }
+  const response = await client.responses.parse({
+    model: "gpt-5-mini",
+    input: [
+      { role: "system", content: SYSTEM },
+      { role: "user", content: `Topic: ${body.prompt}` },
+    ],
+    text: {
+      format: zodTextFormat(DialogueSchema, "dialogue"),
+    },
+  });
 
-  const openaiEnd = performance.now();
-  console.log("✅ OpenAI response received");
-  console.log(`⏱ OpenAI latency: ${(openaiEnd - openaiStart).toFixed(1)} ms`);
+  const duration = performance.now() - start;
 
-  // Usage logging (if available)
-  if (response.usage) {
-    console.log("📊 Token usage:", response.usage);
-  } else {
-    console.log("📊 No usage data returned");
-  }
+  const parsed = DialogueSchema.parse(response.output_parsed);
 
-  // Raw output length
-  const rawText =
-    typeof response.output_text === "string"
-      ? response.output_text
-      : JSON.stringify(response.output_text);
-
-  console.log(`📦 Raw output size: ${rawText.length} chars`);
-
-  const validationStart = performance.now();
-
-  let parsed;
-  try {
-    parsed = DialogueSchema.parse(response.output_parsed);
-  } catch (err) {
-    console.error("❌ Zod validation failed");
-    console.error(err);
-    console.log("🔍 Raw parsed output:", response.output_parsed);
-    throw err;
-  }
-
-  const validationEnd = performance.now();
-
+  // Minimal but useful logging
   console.log(
-    `🛡 Schema validation time: ${(validationEnd - validationStart).toFixed(
-      1,
-    )} ms`,
+    `[openai] model=${response.model} ` +
+      `latency=${duration.toFixed(0)}ms ` +
+      `tokens=${response.usage?.total_tokens ?? "?"}`,
   );
-
-  console.log(
-    `🏁 Total request time: ${(validationEnd - requestStart).toFixed(1)} ms`,
-  );
-
-  console.log("==============================\n");
 
   writeFixture(parsed);
 
@@ -139,8 +107,9 @@ Bun.serve({
     const url = new URL(req.url);
 
     if (url.pathname === "/api/dialogue") {
-      if (req.method !== "POST")
+      if (req.method !== "POST") {
         return new Response("Method Not Allowed", { status: 405 });
+      }
 
       try {
         return await handleDialogue(req);

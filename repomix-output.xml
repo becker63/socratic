@@ -1,0 +1,927 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+shared/
+  schemas.ts
+src/
+  components/
+    MdxRenderer.tsx
+    Pane.tsx
+  fixtures/
+    dialogue.json
+  replay/
+    bus.ts
+    controller.ts
+  App.tsx
+  main.tsx
+.gitignore
+flake.lock
+flake.nix
+index.html
+index.ts
+package.json
+server.ts
+tsconfig.json
+vite.config.ts
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/components/MdxRenderer.tsx">
+import React from "react";
+import { Box } from "@chakra-ui/react";
+import MarkdownHooks from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeMermaid from "rehype-mermaid";
+
+/**
+ * Renders markdown with Mermaid fenced blocks.
+ *
+ * NOTE: rehype-mermaid is async -> use MarkdownHooks.
+ * NOTE: key={content} forces remount on content change, which avoids a class of
+ *       "renders in the wrong place" bugs when plugins keep internal state.
+ */
+export function MdxRenderer({ content }: { content: string }) {
+  return (
+    <Box>
+      <MarkdownHooks
+        key={content}
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[
+          // default strategy is inline-svg
+          [rehypeMermaid, { strategy: "inline-svg" }],
+        ]}
+      >
+        {content}
+      </MarkdownHooks>
+    </Box>
+  );
+}
+</file>
+
+<file path="src/components/Pane.tsx">
+import React from "react";
+import { Box, Heading, VStack } from "@chakra-ui/react";
+import type { Turn } from "../../shared/schemas";
+import { bus, type Pane as PaneKind } from "../replay/bus";
+import { MdxRenderer } from "./MdxRenderer";
+
+function speakerMatches(kind: PaneKind, speaker: Turn["speaker"]) {
+  return (
+    (kind === "security" && speaker === "security_engineer") ||
+    (kind === "application" && speaker === "application_engineer")
+  );
+}
+
+export function Pane({ kind, title }: { kind: PaneKind; title: string }) {
+  const [turns, setTurns] = React.useState<Turn[]>([]);
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    const onStart = () => setTurns([]);
+    const onAppend = (turn: Turn) => {
+      if (!speakerMatches(kind, turn.speaker)) return;
+      setTurns((prev) => [...prev, turn]);
+    };
+
+    bus.on("REPLAY_START", onStart);
+    bus.on("APPEND_TURN", onAppend);
+
+    return () => {
+      bus.off("REPLAY_START", onStart);
+      bus.off("APPEND_TURN", onAppend);
+    };
+  }, [kind]);
+
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [turns.length]);
+
+  return (
+    <Box borderWidth="1px" borderRadius="lg" overflow="hidden" height="520px">
+      <Box
+        px="4"
+        py="3"
+        borderBottomWidth="1px"
+        position="sticky"
+        top="0"
+        bg="bg"
+      >
+        <Heading size="sm">{title}</Heading>
+      </Box>
+
+      <Box
+        ref={scrollRef}
+        px="4"
+        py="4"
+        overflowY="auto"
+        height="calc(520px - 48px)"
+      >
+        <VStack align="stretch" gap="4">
+          {turns.map((t, i) => (
+            <MdxRenderer key={`${t.speaker}-${i}`} content={t.mdx} />
+          ))}
+        </VStack>
+      </Box>
+    </Box>
+  );
+}
+</file>
+
+<file path="src/fixtures/dialogue.json">
+{
+  "topic": "Zero trust in microservices",
+  "events": [
+    {
+      "type": "paragraph",
+      "speaker": "security_engineer",
+      "content": "We should enforce workload identities and mutual TLS between services using SPIFFE/SPIRE for issuance and Envoy sidecars for enforcement. Concrete rationale: SPIRE attests workloads (k8s, AWS IAM, TPM) and issues short-lived SVIDs; Envoy consumes those via SDS to enforce mTLS and verify URI SANs (spiffe://...). Combine with OPA for fine-grained RBAC and intent-based policies. This prevents token replay and stolen static credentials from being used laterally.",
+      "language": null,
+      "items": null,
+      "code": null
+    },
+    {
+      "type": "paragraph",
+      "speaker": "application_engineer",
+      "content": "I agree on stronger identity, but sidecars and a control plane add latency, CPU, and developer friction. Running Envoy everywhere and integrating SPIRE into local dev/CI is heavy. My preferred pragmatic alternative is a hardened API gateway for north-south with JWTs issued by an IdP and short-lived service tokens (STS) for east-west where possible — fewer moving parts and easier to reason about in app code.",
+      "language": null,
+      "items": null,
+      "code": null
+    },
+    {
+      "type": "bullet_list",
+      "speaker": "security_engineer",
+      "content": null,
+      "language": null,
+      "items": [
+        "Mechanisms we must use/consider: SPIFFE IDs, SPIRE server and node agents, SDS (Envoy Secret Discovery Service), OPA for policy evaluation, and an ingress gateway (Envoy/NGINX) to terminate external TLS.",
+        "Mitigations for your concerns: permissive mode on sidecars during rollout, cached SVIDs for brief control-plane outages, short-lived certs with automated rotation so expired certs are rare, and k8s pod annotations to reduce dev friction via local SPIRE dev mode or mock attestor.",
+        "Failure cases and responses: control-plane outage -> sidecars use cached SVIDs and reject new attestation; key compromise -> rotate trust bundle and revoke via short TTL SVIDs; sidecar crash -> readiness probes and circuit-breakers to avoid silent failures.",
+        "Rollout approach: canary by namespace, enable mTLS verification policy gradually, and gate by OPA checks with a rollout flag (permissive -> audit -> enforce)."
+      ],
+      "code": null
+    },
+    {
+      "type": "code",
+      "speaker": "application_engineer",
+      "content": "const jwt = require('jsonwebtoken');\n\n// App-level JWT verification (simple example)\nfunction verifyToken(token) {\n  const publicKeysUrl = 'https://idp.example.com/.well-known/jwks.json';\n  // Use jwks client in real code; simplified for clarity\n  const payload = jwt.verify(token, /* jwk-public-key */, {\n    issuer: 'https://idp.example.com',\n    audience: 'microservice-a',\n    algorithms: ['RS256']\n  });\n  // enforce app-level claims\n  if (!payload.scp || !payload.scp.includes('access:read')) throw new Error('insufficient scope');\n  return payload;\n}\n",
+      "language": "javascript",
+      "items": null,
+      "code": null
+    },
+    {
+      "type": "diagram",
+      "speaker": "security_engineer",
+      "content": null,
+      "language": null,
+      "items": null,
+      "code": "flowchart LR\n  User --> IngressGW[Ingress Gateway (Envoy)]\n  IngressGW --> SidecarA[Sidecar Envoy A]\n  SidecarA --> ServiceA[Service A]\n  ServiceA --> SidecarB[Sidecar Envoy B]\n  SidecarB --> ServiceB[Service B]\n  SPIRE[SP IRE Server]\n  SPIRE -. issues SVID .-> SidecarA\n  SPIRE -. issues SVID .-> SidecarB\n  OPA[OPA Policy Engine] -->|policy decisions| SidecarA\n  OPA -->|policy decisions| SidecarB"
+    },
+    {
+      "type": "bullet_list",
+      "speaker": "application_engineer",
+      "content": null,
+      "language": null,
+      "items": [
+        "Operational concerns to address before we adopt sidecars cluster-wide: reproducible local dev (mock SPIRE or dev attestor), CI tests that simulate SVID rotation, and low-latency guarantees (TLS handshake budget per RPC).",
+        "Debugging encrypted east-west traffic is harder; we need clear tracing (propagate trace context across sidecars) and tools to capture decrypted traffic in a secure way (audit pods with explicit consent).",
+        "Resource constraints: on small nodes the CPU overhead of Envoy plus application can reduce throughput; need benchmark baselines and explicit SLAs for p95/p99 tail latency."
+      ],
+      "code": null
+    },
+    {
+      "type": "code",
+      "speaker": "security_engineer",
+      "content": "transport_socket:\n  name: envoy.transport_sockets.tls\n  typed_config:\n    '@type': type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext\n    common_tls_context:\n      tls_certificate_sds_secret_configs:\n        - name: sds-server\n      validation_context_sds_secret_config:\n        name: sds-validation\n      alpn_protocols: [h2, http/1.1]\n    require_client_certificate: true\n    verify_subject_alt_name: [\"spiffe://example.org/ns/default/sa/backend\"]\n",
+      "language": "yaml",
+      "items": null,
+      "code": null
+    },
+    {
+      "type": "paragraph",
+      "speaker": "application_engineer",
+      "content": "I can accept a phased model: use a hardened API gateway for north-south and start enabling sidecar-based mTLS only for high-risk namespaces (payments, auth) in permissive mode. But we need: automated SDKs for apps to inspect SVIDs if needed, a local-spire developer flow, and measurable acceptance criteria (latency, CPU, error rate) before broad enforcement.",
+      "language": null,
+      "items": null,
+      "code": null
+    },
+    {
+      "type": "paragraph",
+      "speaker": "security_engineer",
+      "content": "Agreed on phased rollout. Proposed concrete plan: 1) Deploy SPIRE with k8s attestor and node-agent SDS; 2) Deploy ingress gateway (Envoy) terminating external TLS and minting short-lived mTLS SVIDs for north-south; 3) Enable sidecars in permissive mode for target namespaces and collect OPA audit logs; 4) Canary enforce mTLS and OPA policies with a 10% traffic cutover, monitor Prometheus metrics (tls.handshakes, svid.renewal_latency, opa.decision_latency), and run chaos tests (simulate SPIRE outage, certificate expiry) to validate fallback. Rollback by switching sidecar policy to permissive and reverting gateway config.",
+      "language": null,
+      "items": null,
+      "code": null
+    },
+    {
+      "type": "bullet_list",
+      "speaker": "application_engineer",
+      "content": null,
+      "language": null,
+      "items": [
+        "Dev/QA requirements before enforcement: local SPIRE dev mode or documented mock attestor, lightweight SDKs for token inspection (Go/Java/Python), CI jobs that rotate SVIDs and verify graceful session continuation.",
+        "Observability/acceptance criteria: p95 increase < 5ms, CPU overhead < 10% per pod, end-to-end traces preserved across sidecars, and automated smoke tests that validate both permissive and enforce modes during canary.",
+        "Operational playbooks: steps to recover from control-plane outage (cache TTL behaviors), certificate expiry (manual hotfix path), and sidecar crashes (probe-based restart and fallback to gateway routing)."
+      ],
+      "code": null
+    }
+  ]
+}
+</file>
+
+<file path="src/replay/bus.ts">
+import mitt from "mitt";
+import type { Turn } from "../../shared/schemas";
+
+export type Pane = "security" | "application";
+
+export type Events = {
+  REPLAY_START: void;
+  APPEND_TURN: Turn;
+  REPLAY_COMPLETE: void;
+};
+
+export const bus = mitt<Events>();
+</file>
+
+<file path="src/replay/controller.ts">
+import type { Dialogue } from "../../shared/schemas";
+import { bus } from "./bus";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export async function replayDialogue(
+  dialogue: Dialogue,
+  opts?: { delayMs?: number },
+) {
+  const delayMs = opts?.delayMs ?? 350;
+
+  bus.emit("REPLAY_START");
+
+  for (const turn of dialogue.turns) {
+    bus.emit("APPEND_TURN", turn);
+    await sleep(delayMs);
+  }
+
+  bus.emit("REPLAY_COMPLETE");
+}
+</file>
+
+<file path="src/main.tsx">
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import { App } from "./App";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <ChakraProvider value={defaultSystem}>
+      <App />
+    </ChakraProvider>
+  </React.StrictMode>,
+);
+</file>
+
+<file path=".gitignore">
+# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+*.tgz
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
+</file>
+
+<file path="flake.lock">
+{
+  "nodes": {
+    "flake-compat": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1767039857,
+        "narHash": "sha256-vNpUSpF5Nuw8xvDLj2KCwwksIbjua2LZCqhV1LNRDns=",
+        "owner": "NixOS",
+        "repo": "flake-compat",
+        "rev": "5edf11c44bc78a0d334f6334cdaf7d60d732daab",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "flake-compat",
+        "type": "github"
+      }
+    },
+    "flake-utils": {
+      "inputs": {
+        "systems": "systems"
+      },
+      "locked": {
+        "lastModified": 1731533236,
+        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "git-hooks": {
+      "inputs": {
+        "flake-compat": "flake-compat",
+        "gitignore": "gitignore",
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1771858127,
+        "narHash": "sha256-Gtre9YoYl3n25tJH2AoSdjuwcqij5CPxL3U3xysYD08=",
+        "owner": "cachix",
+        "repo": "git-hooks.nix",
+        "rev": "49bbbfc218bf3856dfa631cead3b052d78248b83",
+        "type": "github"
+      },
+      "original": {
+        "owner": "cachix",
+        "repo": "git-hooks.nix",
+        "type": "github"
+      }
+    },
+    "gitignore": {
+      "inputs": {
+        "nixpkgs": [
+          "git-hooks",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1709087332,
+        "narHash": "sha256-HG2cCnktfHsKV0s4XW83gU3F57gaTljL9KNSuG6bnQs=",
+        "owner": "hercules-ci",
+        "repo": "gitignore.nix",
+        "rev": "637db329424fd7e46cf4185293b9cc8c88c95394",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "gitignore.nix",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1770073757,
+        "narHash": "sha256-Vy+G+F+3E/Tl+GMNgiHl9Pah2DgShmIUBJXmbiQPHbI=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "47472570b1e607482890801aeaf29bfb749884f6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1771848320,
+        "narHash": "sha256-0MAd+0mun3K/Ns8JATeHT1sX28faLII5hVLq0L3BdZU=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "flake-utils": "flake-utils",
+        "git-hooks": "git-hooks",
+        "nixpkgs": "nixpkgs_2"
+      }
+    },
+    "systems": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
+</file>
+
+<file path="index.html">
+<!doctype html>
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <title>Minimal Bun + React</title>
+    </head>
+    <body>
+        <div id="root"></div>
+        <script type="module" src="/src/main.tsx"></script>
+    </body>
+</html>
+</file>
+
+<file path="index.ts">
+console.log("Hello via Bun!");
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+
+    "noEmit": true,
+
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true
+  },
+  "include": ["src", "shared", "server.ts"]
+}
+</file>
+
+<file path="vite.config.ts">
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    proxy: {
+      "/api": "http://localhost:3001",
+    },
+  },
+});
+</file>
+
+<file path="shared/schemas.ts">
+// shared/schemas.ts
+import { z } from "zod";
+
+/**
+ * Prompt Input
+ */
+export const PromptRequestSchema = z.object({
+  prompt: z.string().min(1),
+});
+
+/**
+ * Speakers
+ */
+export const SpeakerSchema = z.enum([
+  "security_engineer",
+  "application_engineer",
+]);
+
+export type Speaker = z.infer<typeof SpeakerSchema>;
+
+/**
+ * A single conversational turn.
+ * mdx is markdown/MDX-ish content (we'll render as markdown).
+ * Mermaid diagrams are expressed as ```mermaid code fences inside mdx.
+ */
+export const TurnSchema = z.object({
+  speaker: SpeakerSchema,
+  mdx: z.string().min(1),
+});
+
+export type Turn = z.infer<typeof TurnSchema>;
+
+/**
+ * Dialogue root
+ */
+export const DialogueSchema = z.object({
+  topic: z.string().min(1),
+  turns: z.array(TurnSchema).min(6).max(12),
+});
+
+export type Dialogue = z.infer<typeof DialogueSchema>;
+</file>
+
+<file path="src/App.tsx">
+import React from "react";
+import {
+  Box,
+  Button,
+  Heading,
+  Input,
+  Text,
+  VStack,
+  Grid,
+} from "@chakra-ui/react";
+import {
+  PromptRequestSchema,
+  DialogueSchema,
+  type Dialogue,
+} from "../shared/schemas";
+import { Pane } from "./components/Pane";
+import { replayDialogue } from "./replay/controller";
+import fixtureData from "./fixtures/dialogue.json";
+
+const USE_STATIC_FIXTURE = true;
+
+export function App() {
+  const [prompt, setPrompt] = React.useState("Zero trust in microservices");
+  const [dialogue, setDialogue] = React.useState<Dialogue | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [validated, setValidated] = React.useState(false);
+
+  async function generate() {
+    setLoading(true);
+    setError(null);
+    setValidated(false);
+
+    try {
+      let parsed: Dialogue;
+
+      if (USE_STATIC_FIXTURE) {
+        parsed = DialogueSchema.parse(fixtureData);
+      } else {
+        const body = PromptRequestSchema.parse({ prompt });
+        const resp = await fetch("/api/dialogue", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        if (!resp.ok) throw new Error(await resp.text());
+        parsed = DialogueSchema.parse(await resp.json());
+      }
+
+      setDialogue(parsed);
+      setValidated(true);
+      queueMicrotask(() => replayDialogue(parsed));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setDialogue(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function replay() {
+    if (!dialogue) return;
+    await replayDialogue(dialogue);
+  }
+
+  return (
+    <Box p="6">
+      <VStack align="stretch" gap="4">
+        <Heading size="lg">Socratic</Heading>
+
+        <Box display="flex" gap="3">
+          <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+          <Button onClick={generate} loading={loading}>
+            Generate
+          </Button>
+          <Button onClick={replay} disabled={!dialogue}>
+            Replay
+          </Button>
+        </Box>
+
+        {validated && <Text fontSize="sm">✅ Schema Validated Output</Text>}
+        {error && <Text color="red.500">{error}</Text>}
+
+        <Grid templateColumns="1fr 1fr" gap="4">
+          <Pane kind="security" title="Security Engineer" />
+          <Pane kind="application" title="Application Engineer" />
+        </Grid>
+      </VStack>
+    </Box>
+  );
+}
+</file>
+
+<file path="flake.nix">
+{
+  description = "Platform-independent Bun + Vite dev shell with pre-commit hooks";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+    git-hooks.url = "github:cachix/git-hooks.nix";
+  };
+
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      git-hooks,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+        };
+
+        preCommit = git-hooks.lib.${system}.run {
+          src = ./.;
+          hooks = {
+            # Secret scanning
+            trufflehog.enable = true;
+            ripsecrets.enable = true;
+
+            # Nice hygiene
+            nixfmt.enable = true;
+            end-of-file-fixer.enable = true;
+            trim-trailing-whitespace.enable = true;
+          };
+        };
+      in
+      {
+        checks.pre-commit-check = preCommit;
+
+        devShells.default = pkgs.mkShell {
+          packages = [
+            pkgs.bun
+          ]
+          ++ preCommit.enabledPackages;
+
+          shellHook = ''
+            ${preCommit.shellHook}
+          '';
+        };
+      }
+    );
+}
+</file>
+
+<file path="package.json">
+{
+  "name": "socratic",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev:server": "bun --watch server.ts",
+    "dev:client": "vite",
+    "dev": "concurrently -k -n server,client -c blue,green \"bun run dev:server\" \"bun run dev:client\""
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "concurrently": "^9.2.1",
+    "vite": "^7.3.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@chakra-ui/react": "^3.33.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "framer-motion": "^12.34.3",
+    "mermaid": "^11.12.3",
+    "mitt": "^3.0.1",
+    "openai": "^6.24.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
+    "rehype-mermaid": "^3.0.0",
+    "rehype-stringify": "^10.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "unified": "^11.0.5",
+    "zod": "^4.3.6"
+  }
+}
+</file>
+
+<file path="server.ts">
+import { OpenAI } from "openai";
+import { zodTextFormat } from "openai/helpers/zod";
+import { PromptRequestSchema, DialogueSchema } from "./shared/schemas";
+import { mkdirSync, writeFileSync } from "fs";
+import { dirname } from "path";
+
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+const SYSTEM = `
+You generate a structured architectural debate between two engineer archetypes.
+
+Return JSON that matches the provided schema exactly.
+
+STRUCTURE:
+- topic: string
+- turns: array of objects
+    - speaker: "security_engineer" | "application_engineer"
+    - mdx: string (valid markdown / MDX content)
+
+CONVERSATION RULES:
+- The first turn must be from "security_engineer".
+- Speakers must strictly alternate.
+- Each speaker must contribute 3–5 turns.
+- Total turns: 6–10.
+- The debate must include real disagreement and trade-offs.
+- Avoid generic statements.
+
+CONTENT RULES:
+- The "mdx" field must contain valid markdown.
+- Allowed markdown constructs:
+    - paragraphs
+    - bullet lists
+    - headings
+    - fenced code blocks
+    - mermaid fenced diagrams
+- Do not include markdown fences outside the mdx string.
+- Do not include commentary outside the JSON response.
+- Do not include extra keys.
+
+MERMAID RULES:
+- If including a diagram, use a fenced code block with language "mermaid".
+- Always begin diagrams with: flowchart LR
+- Keep diagrams minimal.
+- Do not use:
+    - click directives
+    - classDef
+    - note over
+    - sequenceDiagram
+- Ensure valid Mermaid syntax.
+
+STYLE:
+- Technical but concise.
+- Cite concrete mechanisms (e.g., SPIFFE, OPA, gateways, rollout modes, failure cases).
+- Each turn should respond directly to the previous one.
+`.trim();
+
+function json(data: unknown, init?: ResponseInit) {
+  return new Response(JSON.stringify(data), {
+    headers: { "content-type": "application/json" },
+    ...init,
+  });
+}
+
+function writeFixture(dialogue: unknown) {
+  const path = "./src/fixtures/dialogue.json";
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(dialogue, null, 2), "utf-8");
+}
+
+async function handleDialogue(req: Request) {
+  const body = PromptRequestSchema.parse(await req.json());
+
+  const start = performance.now();
+
+  const response = await client.responses.parse({
+    model: "gpt-5-mini",
+    input: [
+      { role: "system", content: SYSTEM },
+      { role: "user", content: `Topic: ${body.prompt}` },
+    ],
+    text: {
+      format: zodTextFormat(DialogueSchema, "dialogue"),
+    },
+  });
+
+  const duration = performance.now() - start;
+
+  const parsed = DialogueSchema.parse(response.output_parsed);
+
+  // Minimal but useful logging
+  console.log(
+    `[openai] model=${response.model} ` +
+      `latency=${duration.toFixed(0)}ms ` +
+      `tokens=${response.usage?.total_tokens ?? "?"}`,
+  );
+
+  writeFixture(parsed);
+
+  return json(parsed);
+}
+
+Bun.serve({
+  port: 3001,
+  async fetch(req) {
+    const url = new URL(req.url);
+
+    if (url.pathname === "/api/dialogue") {
+      if (req.method !== "POST") {
+        return new Response("Method Not Allowed", { status: 405 });
+      }
+
+      try {
+        return await handleDialogue(req);
+      } catch (e) {
+        return json(
+          { error: e instanceof Error ? e.message : String(e) },
+          { status: 400 },
+        );
+      }
+    }
+
+    return new Response("Not Found", { status: 404 });
+  },
+});
+</file>
+
+</files>

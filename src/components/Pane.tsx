@@ -1,60 +1,33 @@
 import React from "react";
-import {
-  Box,
-  Heading,
-  VStack,
-  Text,
-  Code,
-  ListRoot,
-  ListItem,
-} from "@chakra-ui/react";
-import type { Block } from "../../shared/schemas";
+import { Box, Heading, VStack } from "@chakra-ui/react";
+import type { Turn } from "../../shared/schemas";
 import { bus, type Pane as PaneKind } from "../replay/bus";
+import { MdxRenderer } from "./MdxRenderer";
 
-function RenderBlock({ block }: { block: Block }) {
-  if (block.type === "paragraph") {
-    return <Text>{block.content}</Text>;
-  }
-
-  if (block.type === "code") {
-    return (
-      <Box>
-        <Text fontSize="sm" opacity={0.8}>
-          {block.language}
-        </Text>
-        <Code display="block" whiteSpace="pre" p="3" borderRadius="md">
-          {block.content}
-        </Code>
-      </Box>
-    );
-  }
-
+function speakerMatches(kind: PaneKind, speaker: Turn["speaker"]) {
   return (
-    <ListRoot as="ul" ps="5">
-      {block.items?.map((it, i) => (
-        <ListItem key={i}>{it}</ListItem>
-      ))}
-    </ListRoot>
+    (kind === "security" && speaker === "security_engineer") ||
+    (kind === "application" && speaker === "application_engineer")
   );
 }
 
 export function Pane({ kind, title }: { kind: PaneKind; title: string }) {
-  const [blocks, setBlocks] = React.useState<Block[]>([]);
+  const [turns, setTurns] = React.useState<Turn[]>([]);
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
-    const onStart = () => setBlocks([]);
-    const onAppend = (e: { pane: PaneKind; block: Block }) => {
-      if (e.pane !== kind) return;
-      setBlocks((prev) => [...prev, e.block]);
+    const onStart = () => setTurns([]);
+    const onAppend = (turn: Turn) => {
+      if (!speakerMatches(kind, turn.speaker)) return;
+      setTurns((prev) => [...prev, turn]);
     };
 
     bus.on("REPLAY_START", onStart);
-    bus.on("APPEND_BLOCK", onAppend);
+    bus.on("APPEND_TURN", onAppend);
 
     return () => {
       bus.off("REPLAY_START", onStart);
-      bus.off("APPEND_BLOCK", onAppend);
+      bus.off("APPEND_TURN", onAppend);
     };
   }, [kind]);
 
@@ -62,7 +35,7 @@ export function Pane({ kind, title }: { kind: PaneKind; title: string }) {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [blocks.length]);
+  }, [turns.length]);
 
   return (
     <Box borderWidth="1px" borderRadius="lg" overflow="hidden" height="520px">
@@ -84,9 +57,9 @@ export function Pane({ kind, title }: { kind: PaneKind; title: string }) {
         overflowY="auto"
         height="calc(520px - 48px)"
       >
-        <VStack align="stretch" gap="3">
-          {blocks.map((b, i) => (
-            <RenderBlock key={i} block={b} />
+        <VStack align="stretch" gap="4">
+          {turns.map((t, i) => (
+            <MdxRenderer key={`${t.speaker}-${i}`} content={t.mdx} />
           ))}
         </VStack>
       </Box>
