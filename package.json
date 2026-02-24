@@ -23,6 +23,7 @@
     "@chakra-ui/react": "^3.33.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@xstate/react": "^6.0.0",
     "framer-motion": "^12.34.3",
     "mermaid": "^11.12.3",
     "mitt": "^3.0.1",
@@ -36,6 +37,7 @@
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.2",
     "unified": "^11.0.5",
+    "xstate": "^5.28.0",
     "zod": "^4.3.6"
   }
 }

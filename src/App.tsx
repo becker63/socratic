@@ -1,15 +1,17 @@
+// src/App.tsx
 import React, { useEffect, useRef, useState } from "react";
-import { Box, Button, Input, Text } from "@chakra-ui/react";
+import { Box, Button, Input } from "@chakra-ui/react";
+import { useMachine } from "@xstate/react";
 import {
   PromptRequestSchema,
   DialogueSchema,
   type Dialogue,
   type Turn,
 } from "../shared/schemas";
-import { replayDialogue } from "./replay/controller";
-import { bus } from "./replay/bus";
 import fixtureData from "./fixtures/dialogue.json";
+import { bus } from "./replay/bus";
 import { MdxRenderer } from "./components/MdxRenderer";
+import { debateMachine } from "./machines/debateMachine";
 
 const USE_STATIC_FIXTURE = true;
 
@@ -26,13 +28,17 @@ function mapSpeaker(s: Turn["speaker"]): "security" | "application" {
 
 export function App() {
   const [prompt, setPrompt] = useState("Zero trust in microservices");
-  const [dialogue, setDialogue] = useState<Dialogue | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [blocks, setBlocks] = useState<LayoutBlock[]>([]);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
+  const [state, send] = useMachine(debateMachine);
+
+  // ========================
+  // GENERATE
+  // ========================
   async function generate() {
     setLoading(true);
     setError(null);
@@ -43,15 +49,11 @@ export function App() {
       if (USE_STATIC_FIXTURE) {
         parsed = DialogueSchema.parse(fixtureData);
       } else {
-        const body = PromptRequestSchema.parse({
-          prompt,
-        });
+        const body = PromptRequestSchema.parse({ prompt });
 
         const resp = await fetch("/api/dialogue", {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-          },
+          headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
         });
 
@@ -60,20 +62,24 @@ export function App() {
         parsed = DialogueSchema.parse(await resp.json());
       }
 
-      setDialogue(parsed);
+      send({ type: "GENERATE", dialogue: parsed });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      setDialogue(null);
     } finally {
       setLoading(false);
     }
   }
 
-  async function replay() {
-    if (!dialogue) return;
-    await replayDialogue(dialogue);
+  // ========================
+  // REPLAY
+  // ========================
+  function replay() {
+    send({ type: "REPLAY" });
   }
 
+  // ========================
+  // BUS PROJECTION
+  // ========================
   useEffect(() => {
     function onStart() {
       setBlocks([]);
@@ -107,54 +113,27 @@ export function App() {
     };
   }, []);
 
+  // ========================
+  // SCROLL OWNERSHIP DETECTION
+  // ========================
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const isAtBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 5;
+
+    if (!isAtBottom) {
+      send({ type: "USER_SCROLLED_UP" });
+    } else {
+      send({ type: "USER_AT_BOTTOM" });
+    }
+  }
+
+  // ========================
+  // AUTO SCROLL (machine-owned only)
+  // ========================
   useEffect(() => {
-    if (dialogue) {
-      replayDialogue(dialogue);
-    }
-  }, [dialogue]);
-
-  const lastAppendedIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    function onStart() {
-      setBlocks([]);
-      lastAppendedIdRef.current = null;
-    }
-
-    function onAppend(turn: Turn) {
-      const id = crypto.randomUUID();
-
-      lastAppendedIdRef.current = id;
-
-      setBlocks((prev) => [
-        ...prev,
-        {
-          id,
-          speaker: mapSpeaker(turn.speaker),
-          mdx: turn.mdx,
-        },
-      ]);
-    }
-
-    function onRendered({ id, height }: { id: string; height: number }) {
-      setBlocks((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, height } : b)),
-      );
-    }
-
-    bus.on("REPLAY_START", onStart);
-    bus.on("APPEND_TURN", onAppend);
-    bus.on("TURN_RENDERED", onRendered);
-
-    return () => {
-      bus.off("REPLAY_START", onStart);
-      bus.off("APPEND_TURN", onAppend);
-      bus.off("TURN_RENDERED", onRendered);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!lastAppendedIdRef.current) return;
+    if (!state.matches({ scroll: "machineOwned" })) return;
 
     const el = scrollRef.current;
     if (!el) return;
@@ -165,7 +144,7 @@ export function App() {
         behavior: "smooth",
       });
     });
-  }, [blocks]);
+  }, [blocks, state]);
 
   return (
     <Box
@@ -186,17 +165,27 @@ export function App() {
       >
         <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} />
 
-        <Button colorScheme="blue" onClick={generate} isLoading={loading}>
+        <Button colorScheme="blue" onClick={generate} loading={loading}>
           Generate
         </Button>
 
-        <Button variant="outline" onClick={replay} disabled={!dialogue}>
+        <Button
+          variant="outline"
+          onClick={replay}
+          disabled={!state.context.dialogue}
+        >
           Replay
         </Button>
       </Box>
 
       {/* Debate Surface */}
-      <Box ref={scrollRef} flex="1" overflowY="auto" minH="0">
+      <Box
+        ref={scrollRef}
+        flex="1"
+        overflowY="auto"
+        minH="0"
+        onScroll={handleScroll}
+      >
         {blocks.map((block) => (
           <TurnRow key={block.id} block={block} />
         ))}
