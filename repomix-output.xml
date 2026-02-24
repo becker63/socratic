@@ -70,242 +70,46 @@ This section contains the contents of the repository's files.
 <file path="src/components/MdxRenderer.tsx">
 import React from "react";
 import { Box } from "@chakra-ui/react";
-import MarkdownHooks from "react-markdown";
+import { MarkdownHooks } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeMermaid from "rehype-mermaid";
 
-/**
- * Renders markdown with Mermaid fenced blocks.
- *
- * NOTE: rehype-mermaid is async -> use MarkdownHooks.
- * NOTE: key={content} forces remount on content change, which avoids a class of
- *       "renders in the wrong place" bugs when plugins keep internal state.
- */
 export function MdxRenderer({ content }: { content: string }) {
   return (
-    <Box>
+    <Box
+      css={{
+        "& p": { mb: 3, lineHeight: 1.7 },
+        "& ul": { pl: 6, mb: 3 },
+        "& li": { mb: 1.5 },
+        "& pre": {
+          bg: "surface",
+          p: 4,
+          borderRadius: "lg",
+          borderWidth: "1px",
+          overflowX: "auto",
+        },
+        "& code": {
+          bg: "subtle",
+          px: 2,
+          py: 1,
+          borderRadius: "md",
+        },
+        "& svg": {
+          bg: "surface",
+          borderRadius: "lg",
+          p: 2,
+        },
+      }}
+    >
       <MarkdownHooks
         key={content}
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[
-          // default strategy is inline-svg
-          [rehypeMermaid, { strategy: "inline-svg" }],
-        ]}
+        rehypePlugins={[[rehypeMermaid, { strategy: "inline-svg" }]]}
       >
         {content}
       </MarkdownHooks>
     </Box>
   );
-}
-</file>
-
-<file path="src/components/Pane.tsx">
-import React from "react";
-import { Box, Heading, VStack } from "@chakra-ui/react";
-import type { Turn } from "../../shared/schemas";
-import { bus, type Pane as PaneKind } from "../replay/bus";
-import { MdxRenderer } from "./MdxRenderer";
-
-function speakerMatches(kind: PaneKind, speaker: Turn["speaker"]) {
-  return (
-    (kind === "security" && speaker === "security_engineer") ||
-    (kind === "application" && speaker === "application_engineer")
-  );
-}
-
-export function Pane({ kind, title }: { kind: PaneKind; title: string }) {
-  const [turns, setTurns] = React.useState<Turn[]>([]);
-  const scrollRef = React.useRef<HTMLDivElement | null>(null);
-
-  React.useEffect(() => {
-    const onStart = () => setTurns([]);
-    const onAppend = (turn: Turn) => {
-      if (!speakerMatches(kind, turn.speaker)) return;
-      setTurns((prev) => [...prev, turn]);
-    };
-
-    bus.on("REPLAY_START", onStart);
-    bus.on("APPEND_TURN", onAppend);
-
-    return () => {
-      bus.off("REPLAY_START", onStart);
-      bus.off("APPEND_TURN", onAppend);
-    };
-  }, [kind]);
-
-  React.useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [turns.length]);
-
-  return (
-    <Box borderWidth="1px" borderRadius="lg" overflow="hidden" height="520px">
-      <Box
-        px="4"
-        py="3"
-        borderBottomWidth="1px"
-        position="sticky"
-        top="0"
-        bg="bg"
-      >
-        <Heading size="sm">{title}</Heading>
-      </Box>
-
-      <Box
-        ref={scrollRef}
-        px="4"
-        py="4"
-        overflowY="auto"
-        height="calc(520px - 48px)"
-      >
-        <VStack align="stretch" gap="4">
-          {turns.map((t, i) => (
-            <MdxRenderer key={`${t.speaker}-${i}`} content={t.mdx} />
-          ))}
-        </VStack>
-      </Box>
-    </Box>
-  );
-}
-</file>
-
-<file path="src/fixtures/dialogue.json">
-{
-  "topic": "Zero trust in microservices",
-  "events": [
-    {
-      "type": "paragraph",
-      "speaker": "security_engineer",
-      "content": "We should enforce workload identities and mutual TLS between services using SPIFFE/SPIRE for issuance and Envoy sidecars for enforcement. Concrete rationale: SPIRE attests workloads (k8s, AWS IAM, TPM) and issues short-lived SVIDs; Envoy consumes those via SDS to enforce mTLS and verify URI SANs (spiffe://...). Combine with OPA for fine-grained RBAC and intent-based policies. This prevents token replay and stolen static credentials from being used laterally.",
-      "language": null,
-      "items": null,
-      "code": null
-    },
-    {
-      "type": "paragraph",
-      "speaker": "application_engineer",
-      "content": "I agree on stronger identity, but sidecars and a control plane add latency, CPU, and developer friction. Running Envoy everywhere and integrating SPIRE into local dev/CI is heavy. My preferred pragmatic alternative is a hardened API gateway for north-south with JWTs issued by an IdP and short-lived service tokens (STS) for east-west where possible — fewer moving parts and easier to reason about in app code.",
-      "language": null,
-      "items": null,
-      "code": null
-    },
-    {
-      "type": "bullet_list",
-      "speaker": "security_engineer",
-      "content": null,
-      "language": null,
-      "items": [
-        "Mechanisms we must use/consider: SPIFFE IDs, SPIRE server and node agents, SDS (Envoy Secret Discovery Service), OPA for policy evaluation, and an ingress gateway (Envoy/NGINX) to terminate external TLS.",
-        "Mitigations for your concerns: permissive mode on sidecars during rollout, cached SVIDs for brief control-plane outages, short-lived certs with automated rotation so expired certs are rare, and k8s pod annotations to reduce dev friction via local SPIRE dev mode or mock attestor.",
-        "Failure cases and responses: control-plane outage -> sidecars use cached SVIDs and reject new attestation; key compromise -> rotate trust bundle and revoke via short TTL SVIDs; sidecar crash -> readiness probes and circuit-breakers to avoid silent failures.",
-        "Rollout approach: canary by namespace, enable mTLS verification policy gradually, and gate by OPA checks with a rollout flag (permissive -> audit -> enforce)."
-      ],
-      "code": null
-    },
-    {
-      "type": "code",
-      "speaker": "application_engineer",
-      "content": "const jwt = require('jsonwebtoken');\n\n// App-level JWT verification (simple example)\nfunction verifyToken(token) {\n  const publicKeysUrl = 'https://idp.example.com/.well-known/jwks.json';\n  // Use jwks client in real code; simplified for clarity\n  const payload = jwt.verify(token, /* jwk-public-key */, {\n    issuer: 'https://idp.example.com',\n    audience: 'microservice-a',\n    algorithms: ['RS256']\n  });\n  // enforce app-level claims\n  if (!payload.scp || !payload.scp.includes('access:read')) throw new Error('insufficient scope');\n  return payload;\n}\n",
-      "language": "javascript",
-      "items": null,
-      "code": null
-    },
-    {
-      "type": "diagram",
-      "speaker": "security_engineer",
-      "content": null,
-      "language": null,
-      "items": null,
-      "code": "flowchart LR\n  User --> IngressGW[Ingress Gateway (Envoy)]\n  IngressGW --> SidecarA[Sidecar Envoy A]\n  SidecarA --> ServiceA[Service A]\n  ServiceA --> SidecarB[Sidecar Envoy B]\n  SidecarB --> ServiceB[Service B]\n  SPIRE[SP IRE Server]\n  SPIRE -. issues SVID .-> SidecarA\n  SPIRE -. issues SVID .-> SidecarB\n  OPA[OPA Policy Engine] -->|policy decisions| SidecarA\n  OPA -->|policy decisions| SidecarB"
-    },
-    {
-      "type": "bullet_list",
-      "speaker": "application_engineer",
-      "content": null,
-      "language": null,
-      "items": [
-        "Operational concerns to address before we adopt sidecars cluster-wide: reproducible local dev (mock SPIRE or dev attestor), CI tests that simulate SVID rotation, and low-latency guarantees (TLS handshake budget per RPC).",
-        "Debugging encrypted east-west traffic is harder; we need clear tracing (propagate trace context across sidecars) and tools to capture decrypted traffic in a secure way (audit pods with explicit consent).",
-        "Resource constraints: on small nodes the CPU overhead of Envoy plus application can reduce throughput; need benchmark baselines and explicit SLAs for p95/p99 tail latency."
-      ],
-      "code": null
-    },
-    {
-      "type": "code",
-      "speaker": "security_engineer",
-      "content": "transport_socket:\n  name: envoy.transport_sockets.tls\n  typed_config:\n    '@type': type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext\n    common_tls_context:\n      tls_certificate_sds_secret_configs:\n        - name: sds-server\n      validation_context_sds_secret_config:\n        name: sds-validation\n      alpn_protocols: [h2, http/1.1]\n    require_client_certificate: true\n    verify_subject_alt_name: [\"spiffe://example.org/ns/default/sa/backend\"]\n",
-      "language": "yaml",
-      "items": null,
-      "code": null
-    },
-    {
-      "type": "paragraph",
-      "speaker": "application_engineer",
-      "content": "I can accept a phased model: use a hardened API gateway for north-south and start enabling sidecar-based mTLS only for high-risk namespaces (payments, auth) in permissive mode. But we need: automated SDKs for apps to inspect SVIDs if needed, a local-spire developer flow, and measurable acceptance criteria (latency, CPU, error rate) before broad enforcement.",
-      "language": null,
-      "items": null,
-      "code": null
-    },
-    {
-      "type": "paragraph",
-      "speaker": "security_engineer",
-      "content": "Agreed on phased rollout. Proposed concrete plan: 1) Deploy SPIRE with k8s attestor and node-agent SDS; 2) Deploy ingress gateway (Envoy) terminating external TLS and minting short-lived mTLS SVIDs for north-south; 3) Enable sidecars in permissive mode for target namespaces and collect OPA audit logs; 4) Canary enforce mTLS and OPA policies with a 10% traffic cutover, monitor Prometheus metrics (tls.handshakes, svid.renewal_latency, opa.decision_latency), and run chaos tests (simulate SPIRE outage, certificate expiry) to validate fallback. Rollback by switching sidecar policy to permissive and reverting gateway config.",
-      "language": null,
-      "items": null,
-      "code": null
-    },
-    {
-      "type": "bullet_list",
-      "speaker": "application_engineer",
-      "content": null,
-      "language": null,
-      "items": [
-        "Dev/QA requirements before enforcement: local SPIRE dev mode or documented mock attestor, lightweight SDKs for token inspection (Go/Java/Python), CI jobs that rotate SVIDs and verify graceful session continuation.",
-        "Observability/acceptance criteria: p95 increase < 5ms, CPU overhead < 10% per pod, end-to-end traces preserved across sidecars, and automated smoke tests that validate both permissive and enforce modes during canary.",
-        "Operational playbooks: steps to recover from control-plane outage (cache TTL behaviors), certificate expiry (manual hotfix path), and sidecar crashes (probe-based restart and fallback to gateway routing)."
-      ],
-      "code": null
-    }
-  ]
-}
-</file>
-
-<file path="src/replay/bus.ts">
-import mitt from "mitt";
-import type { Turn } from "../../shared/schemas";
-
-export type Pane = "security" | "application";
-
-export type Events = {
-  REPLAY_START: void;
-  APPEND_TURN: Turn;
-  REPLAY_COMPLETE: void;
-};
-
-export const bus = mitt<Events>();
-</file>
-
-<file path="src/replay/controller.ts">
-import type { Dialogue } from "../../shared/schemas";
-import { bus } from "./bus";
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-export async function replayDialogue(
-  dialogue: Dialogue,
-  opts?: { delayMs?: number },
-) {
-  const delayMs = opts?.delayMs ?? 350;
-
-  bus.emit("REPLAY_START");
-
-  for (const turn of dialogue.turns) {
-    bus.emit("APPEND_TURN", turn);
-    await sleep(delayMs);
-  }
-
-  bus.emit("REPLAY_COMPLETE");
 }
 </file>
 
@@ -556,142 +360,145 @@ export default defineConfig({
 });
 </file>
 
-<file path="shared/schemas.ts">
-// shared/schemas.ts
-import { z } from "zod";
-
-/**
- * Prompt Input
- */
-export const PromptRequestSchema = z.object({
-  prompt: z.string().min(1),
-});
-
-/**
- * Speakers
- */
-export const SpeakerSchema = z.enum([
-  "security_engineer",
-  "application_engineer",
-]);
-
-export type Speaker = z.infer<typeof SpeakerSchema>;
-
-/**
- * A single conversational turn.
- * mdx is markdown/MDX-ish content (we'll render as markdown).
- * Mermaid diagrams are expressed as ```mermaid code fences inside mdx.
- */
-export const TurnSchema = z.object({
-  speaker: SpeakerSchema,
-  mdx: z.string().min(1),
-});
-
-export type Turn = z.infer<typeof TurnSchema>;
-
-/**
- * Dialogue root
- */
-export const DialogueSchema = z.object({
-  topic: z.string().min(1),
-  turns: z.array(TurnSchema).min(6).max(12),
-});
-
-export type Dialogue = z.infer<typeof DialogueSchema>;
-</file>
-
-<file path="src/App.tsx">
+<file path="src/components/Pane.tsx">
 import React from "react";
-import {
-  Box,
-  Button,
-  Heading,
-  Input,
-  Text,
-  VStack,
-  Grid,
-} from "@chakra-ui/react";
-import {
-  PromptRequestSchema,
-  DialogueSchema,
-  type Dialogue,
-} from "../shared/schemas";
-import { Pane } from "./components/Pane";
-import { replayDialogue } from "./replay/controller";
-import fixtureData from "./fixtures/dialogue.json";
+import { Box, Text } from "@chakra-ui/react";
+import type { Turn } from "../../shared/schemas";
+import { bus, type Pane as PaneKind } from "../replay/bus";
+import { MdxRenderer } from "./MdxRenderer";
 
-const USE_STATIC_FIXTURE = true;
+function speakerMatches(kind: PaneKind, speaker: Turn["speaker"]) {
+  return (
+    (kind === "security" && speaker === "security_engineer") ||
+    (kind === "application" && speaker === "application_engineer")
+  );
+}
 
-export function App() {
-  const [prompt, setPrompt] = React.useState("Zero trust in microservices");
-  const [dialogue, setDialogue] = React.useState<Dialogue | null>(null);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [validated, setValidated] = React.useState(false);
+export function Pane({ kind, title }: { kind: PaneKind; title: string }) {
+  const [turns, setTurns] = React.useState<Turn[]>([]);
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
-  async function generate() {
-    setLoading(true);
-    setError(null);
-    setValidated(false);
+  React.useEffect(() => {
+    const onStart = () => setTurns([]);
+    const onAppend = (turn: Turn) => {
+      if (!speakerMatches(kind, turn.speaker)) return;
+      setTurns((prev) => [...prev, turn]);
+    };
 
-    try {
-      let parsed: Dialogue;
+    bus.on("REPLAY_START", onStart);
+    bus.on("APPEND_TURN", onAppend);
 
-      if (USE_STATIC_FIXTURE) {
-        parsed = DialogueSchema.parse(fixtureData);
-      } else {
-        const body = PromptRequestSchema.parse({ prompt });
-        const resp = await fetch("/api/dialogue", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        });
+    return () => {
+      bus.off("REPLAY_START", onStart);
+      bus.off("APPEND_TURN", onAppend);
+    };
+  }, [kind]);
 
-        if (!resp.ok) throw new Error(await resp.text());
-        parsed = DialogueSchema.parse(await resp.json());
-      }
-
-      setDialogue(parsed);
-      setValidated(true);
-      queueMicrotask(() => replayDialogue(parsed));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setDialogue(null);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function replay() {
-    if (!dialogue) return;
-    await replayDialogue(dialogue);
-  }
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight });
+  }, [turns.length]);
 
   return (
-    <Box p="6">
-      <VStack align="stretch" gap="4">
-        <Heading size="lg">Socratic</Heading>
+    <Box
+      display="flex"
+      flexDirection="column"
+      minH="0"
+      borderRightWidth={kind === "security" ? "1px" : undefined}
+    >
+      {/* Title */}
+      <Box px="4" py="2" borderBottomWidth="1px" flexShrink={0}>
+        <Text
+          fontSize="xs"
+          textTransform="uppercase"
+          letterSpacing="wide"
+          color="fg.muted"
+        >
+          {title}
+        </Text>
+      </Box>
 
-        <Box display="flex" gap="3">
-          <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} />
-          <Button onClick={generate} loading={loading}>
-            Generate
-          </Button>
-          <Button onClick={replay} disabled={!dialogue}>
-            Replay
-          </Button>
-        </Box>
-
-        {validated && <Text fontSize="sm">✅ Schema Validated Output</Text>}
-        {error && <Text color="red.500">{error}</Text>}
-
-        <Grid templateColumns="1fr 1fr" gap="4">
-          <Pane kind="security" title="Security Engineer" />
-          <Pane kind="application" title="Application Engineer" />
-        </Grid>
-      </VStack>
+      {/* Content */}
+      <Box ref={scrollRef} flex="1" minH="0" overflowY="auto" px="4" py="3">
+        {turns.map((t, i) => (
+          <Box key={`${t.speaker}-${i}`} mb="3">
+            <MdxRenderer content={t.mdx} />
+          </Box>
+        ))}
+      </Box>
     </Box>
   );
+}
+</file>
+
+<file path="src/fixtures/dialogue.json">
+{
+  "topic": "Zero trust in microservices",
+  "turns": [
+    {
+      "speaker": "security_engineer",
+      "mdx": "We should adopt a strict zero-trust posture for east‑west traffic using workload identities (SPIFFE), mTLS between sidecars, and OPA for fine‑grained policy enforcement.\n\nKey points:\n\n- Authenticate by identity, not network: SPIFFE SVIDs issued by SPIRE; short‑lived X.509 (or JWT‑SVID) for revocation-free rotation.\n- Encrypt and authorize at the edge of the workload: Envoy/sidecar mTLS, Envoy RBAC + OPA as an external authorizer.\n- Deny‑by‑default RBAC and attribute‑based policies (OPA/Rego) for sensitive calls (database, secrets manager).\n- Rollout strategy: permissive mTLS -> canary (5–25%) -> all, and use chaos engineering to verify cert expiry recovery paths.\n\nConcrete failure cases to prepare for:\n\n- SPIRE control plane compromise: have offline root CA and automated rotation playbooks.\n- Certificate expiry or network partition: use permissive mode with strict audit for short windows and automatic restart/renewal agents.\n\nI expect pushback on complexity and latency; I’ll address trade‑offs if you outline those concerns."
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "I agree with identity‑first goals, but I push back on mandatory sidecars + Envoy for every service because of operational and performance costs.\n\nProblems I see:\n\n- CPU and latency: Envoy sidecars add p99 tail latency and ~5–15% CPU overhead in polyglot fleets.\n- Integration friction: not every runtime team can embed SPIFFE SDKs; sidecars can be heavy for small services (FaaS/edge devices).\n- Centralized OPA policies become deployment coupling: a policy change can break many services and slow down releases.\n\nA pragmatic alternative I propose:\n\n- North‑south: API gateway enforces strong auth (JWT introspection, rate limiting, WAF). Use token caches and introspection caching.\n- East‑west hybrid: critical services use SPIFFE mTLS; noncritical internal calls use signed JWTs with short TTL + local verification.\n- Gradual rollout: start gateway + JWTs, then progressively onboard service mesh for high‑risk paths.\n\nI want to see concrete latency measurements and rollout knobs before committing cluster‑wide sidecars."
+    },
+    {
+      "speaker": "security_engineer",
+      "mdx": "Good points — latency and operational burden are real. Still, JWTs and gateway‑only enforcement have concrete attack windows:\n\n- Replay and revocation: long‑lived JWTs are hard to revoke; token introspection adds central dependency and latency spikes.\n- Gateway compromise: a single compromised ingress gateway could mint or forward tokens to east‑west paths if we rely on gateway trust alone.\n\nHow we mitigate while addressing your concerns:\n\n- Use SPIFFE short‑lived SVIDs (X.509 or JWT‑SVID). TTLs of 10–30 minutes eliminate long revocation windows and avoid introspection for every call.\n- Reduce sidecar overhead: leverage eBPF or kernel bypass (Envoy’s XDP/AF_XDP or gVisor bypass patterns) for hot paths; restrict full proxy to critical services.\n- Rollout concretely:\n  - Phase 1: deploy SPIRE server + agents on control plane nodes; run Envoy in permissive mode (mTLS verified but not required) for 2 weeks.\n  - Phase 2: canary 5% of services with enforced mTLS and OPA policies; monitor p99 auth latency, CPU delta, and error rate.\n  - Phase 3: expand by risk category.\n\nFailure/callback plan:\n\n- If SPIRE unavailable, agents continue serving cached SVIDs until expiry; set TTLs short but long enough to survive brief outages (e.g., 15m).\n- For wider outages, auto‑rollback to permissive with strict logging and alerts, not fail‑open permanently."
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "Accepting JWT replay concerns and the SPIFFE short‑lived solution helps. Still, the devil is in operational details and developer velocity.\n\nOperational trade‑offs I want addressed before full adoption:\n\n- SDK vs sidecar: SDKs avoid heavy sidecars but create language‑specific maintenance across many teams. Sidecars centralize complexity but hurt resource budgets.\n- Observability/perf KPIs: we need concrete thresholds before canary expansion (acceptable p99 increase, CPU budget per pod, memory).\n- Policy ownership: OPA as a centralized policy store needs guardrails (policy review workflow, testing harnesses).\n\nProposed hybrid implementation to compromise:\n\n- Use SPIRE agents + sidecars for critical, high‑risk services (payments, auth, db proxies).\n- Use JWT‑SVID (SPIFFE supports JWT‑SVID) for lightweight validation in low‑risk services — apps validate locally with a stable public key bundle.\n- Deploy OPA as a local sidecar for low latency but keep a central OPA server for policy authorship and CI testing; use policy signing and automated promotion.\n\nAlso, we should create canary KPIs: start at 5% traffic, expand if p99 auth latency delta <2ms and CPU overhead <5%."
+    },
+    {
+      "speaker": "security_engineer",
+      "mdx": "I like the hybrid shape and it's consistent with SPIFFE capabilities. A few concrete mechanisms and operational controls I insist on:\n\n- Use JWT‑SVIDs where appropriate: SPIRE issues JWT‑SVIDs so apps can validate tokens offline using the trust bundle (no introspection). This addresses your SDK concern without sacrificing short TTLs.\n- Policy enforcement: use Envoy RBAC + OPA plugin for complex attribute logic; OPA Gatekeeper for K8s admission controls to stop misconfigurations.\n- Failover and TTL specifics:\n  - Certificate/SVID TTL: 10–30 minutes (trade‑off: shorter TTL reduces compromise window but increases issuance load).\n  - SPIRE HA: run SPIRE server as an HA set; monitor issuance latency and queue length; alert at issuance latency >500ms or queue >1000.\n- Rollback strategy: permissive mode with strict audit for a maximum window (e.g., 4 hours) and automated rollback if:\n  - p99 auth latency increases >2ms above baseline, or\n  - request error rate increases by >1% absolute, or\n  - CPU overhead >7% on canary pods.\n\nMinimal diagram of the flow:\n\n```mermaid\nflowchart LR\n  A[workload] -->|fetch SVID| B[SPIRE agent]\n  A -->|mTLS| C[sidecar Envoy]\n  C -->|policy check| D[OPA sidecar]\n  D --> E[target service]\n```\n\nI’ll own SPIRE outage playbooks and automated alerts if we agree on the KPI thresholds above."
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "That diagram and the concrete thresholds make the plan actionable. I accept the hybrid architecture provided we lock down these operational SLAs and automation steps:\n\n- KPIs and rollout gates:\n  - Canary progression: 5% -> 25% -> 100% when p99 auth latency delta <= 2ms and CPU overhead <= 5%.\n  - If error rate increases >1% or auth failures >0.1% for 10 minutes, auto‑rollback to permissive for affected canaries.\n- Performance mitigations:\n  - Use eBPF for in‑kernel fast path where possible and an Envoy wasm filter for lightweight policy checks.\n  - Cache public bundles for JWT‑SVID validation, refresh off‑peak.\n- Responsibilities:\n  - Security owns SPIRE HA, TTL tuning, and automated rollback playbooks.\n  - Platform owns sidecar deployment patterns, eBPF integration, and a policy CI that validates Rego on test traffic.\n\nIf you commit to those duties and the canary gates, I’ll start a pilot with three critical services and measure metrics for two weeks before broader rollout."
+    }
+  ]
+}
+</file>
+
+<file path="src/replay/bus.ts">
+import mitt from "mitt";
+import type { Turn } from "../../shared/schemas";
+
+export type Pane = "security" | "application";
+
+export type Events = {
+  REPLAY_START: void;
+  APPEND_TURN: Turn;
+  REPLAY_COMPLETE: void;
+};
+
+export const bus = mitt<Events>();
+</file>
+
+<file path="src/replay/controller.ts">
+import type { Dialogue } from "../../shared/schemas";
+import { bus } from "./bus";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export async function replayDialogue(
+  dialogue: Dialogue,
+  opts?: { delayMs?: number },
+) {
+  const delayMs = opts?.delayMs ?? 350;
+
+  bus.emit("REPLAY_START");
+
+  for (const turn of dialogue.turns) {
+    bus.emit("APPEND_TURN", turn);
+    await sleep(delayMs);
+  }
+
+  bus.emit("REPLAY_COMPLETE");
 }
 </file>
 
@@ -748,6 +555,157 @@ export function App() {
         };
       }
     );
+}
+</file>
+
+<file path="shared/schemas.ts">
+// shared/schemas.ts
+import { z } from "zod";
+
+/**
+ * Prompt Input
+ */
+export const PromptRequestSchema = z.object({
+  prompt: z.string().min(1),
+});
+
+/**
+ * Speakers
+ */
+export const SpeakerSchema = z.enum([
+  "security_engineer",
+  "application_engineer",
+]);
+
+export type Speaker = z.infer<typeof SpeakerSchema>;
+
+/**
+ * A single conversational turn.
+ * mdx is markdown/MDX-ish content (we'll render as markdown).
+ * Mermaid diagrams are expressed as ```mermaid code fences inside mdx.
+ */
+export const TurnSchema = z.object({
+  speaker: SpeakerSchema,
+  mdx: z.string().min(1),
+});
+
+export type Turn = z.infer<typeof TurnSchema>;
+
+/**
+ * Dialogue root
+ */
+export const DialogueSchema = z.object({
+  topic: z.string().min(1),
+  turns: z.array(TurnSchema).min(6).max(12),
+});
+
+export type Dialogue = z.infer<typeof DialogueSchema>;
+</file>
+
+<file path="src/App.tsx">
+import React, { useEffect } from "react";
+import { Box, Button, Input } from "@chakra-ui/react";
+import {
+  PromptRequestSchema,
+  DialogueSchema,
+  type Dialogue,
+} from "../shared/schemas";
+import { Pane } from "./components/Pane";
+import { replayDialogue } from "./replay/controller";
+import fixtureData from "./fixtures/dialogue.json";
+
+const USE_STATIC_FIXTURE = true;
+
+export function App() {
+  const [prompt, setPrompt] = React.useState("Zero trust in microservices");
+  const [dialogue, setDialogue] = React.useState<Dialogue | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function generate() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      let parsed: Dialogue;
+
+      if (USE_STATIC_FIXTURE) {
+        parsed = DialogueSchema.parse(fixtureData);
+      } else {
+        const body = PromptRequestSchema.parse({ prompt });
+
+        const resp = await fetch("/api/dialogue", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        if (!resp.ok) throw new Error(await resp.text());
+
+        parsed = DialogueSchema.parse(await resp.json());
+      }
+
+      setDialogue(parsed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setDialogue(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function replay() {
+    if (!dialogue) return;
+    await replayDialogue(dialogue);
+  }
+
+  useEffect(() => {
+    if (dialogue) {
+      replayDialogue(dialogue);
+    }
+  }, [dialogue]);
+
+  useEffect(() => {
+    if (error) {
+      console.error(error);
+    }
+  }, [error]);
+
+  return (
+    <Box
+      height="100vh"
+      display="flex"
+      flexDirection="column"
+      bg="bg"
+      color="fg"
+    >
+      {/* Prompt Bar */}
+      <Box
+        px="6"
+        py="3"
+        borderBottomWidth="1px"
+        display="flex"
+        gap="3"
+        flexShrink={0}
+      >
+        <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+
+        <Button colorScheme="blue" onClick={generate} loading={loading}>
+          Generate
+        </Button>
+
+        <Button variant="outline" onClick={replay} disabled={!dialogue}>
+          Replay
+        </Button>
+      </Box>
+
+      {/* Debate Surface */}
+      <Box flex="1" display="grid" gridTemplateColumns="1fr 1fr" minH="0">
+        <Pane kind="security" title="Security Engineer" />
+        <Pane kind="application" title="Application Engineer" />
+      </Box>
+    </Box>
+  );
 }
 </file>
 

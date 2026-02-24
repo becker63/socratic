@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Heading, VStack } from "@chakra-ui/react";
+import { Box, Text } from "@chakra-ui/react";
 import type { Turn } from "../../shared/schemas";
 import { bus, type Pane as PaneKind } from "../replay/bus";
 import { MdxRenderer } from "./MdxRenderer";
@@ -34,34 +34,35 @@ export function Pane({ kind, title }: { kind: PaneKind; title: string }) {
   React.useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    el.scrollTo({ top: el.scrollHeight });
   }, [turns.length]);
 
   return (
-    <Box borderWidth="1px" borderRadius="lg" overflow="hidden" height="520px">
-      <Box
-        px="4"
-        py="3"
-        borderBottomWidth="1px"
-        position="sticky"
-        top="0"
-        bg="bg"
-      >
-        <Heading size="sm">{title}</Heading>
+    <Box
+      display="flex"
+      flexDirection="column"
+      minH="0"
+      borderRightWidth={kind === "security" ? "1px" : undefined}
+    >
+      {/* Title */}
+      <Box px="4" py="2" borderBottomWidth="1px" flexShrink={0}>
+        <Text
+          fontSize="xs"
+          textTransform="uppercase"
+          letterSpacing="wide"
+          color="fg.muted"
+        >
+          {title}
+        </Text>
       </Box>
 
-      <Box
-        ref={scrollRef}
-        px="4"
-        py="4"
-        overflowY="auto"
-        height="calc(520px - 48px)"
-      >
-        <VStack align="stretch" gap="4">
-          {turns.map((t, i) => (
-            <MdxRenderer key={`${t.speaker}-${i}`} content={t.mdx} />
-          ))}
-        </VStack>
+      {/* Content */}
+      <Box ref={scrollRef} flex="1" minH="0" overflowY="auto" px="4" py="3">
+        {turns.map((t, i) => (
+          <Box key={`${t.speaker}-${i}`} mb="3">
+            <MdxRenderer content={t.mdx} />
+          </Box>
+        ))}
       </Box>
     </Box>
   );
