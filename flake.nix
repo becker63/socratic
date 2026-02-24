@@ -44,12 +44,8 @@
           ]
           ++ preCommit.enabledPackages;
 
-          # Change this if you want
-          shell = "${pkgs.xonsh}/bin/xonsh";
-
           shellHook = ''
             ${preCommit.shellHook}
-
           '';
         };
       }
