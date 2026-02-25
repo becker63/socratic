@@ -1,5 +1,5 @@
 import mitt from "mitt";
-import type { Turn } from "../../shared/schemas";
+import type { Turn } from "../shared/schemas";
 
 export type Pane = "security" | "application";
 

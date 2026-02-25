@@ -1,7 +1,7 @@
 // src/machines/debateMachine.ts
 import { setup, assign, fromPromise } from "xstate";
-import type { Dialogue } from "../../shared/schemas";
-import { replayDialogue } from "../replay/controller";
+import type { Dialogue } from "../shared/schemas";
+import { replayDialogue } from "./replay";
 
 export const debateMachine = setup({
   types: {

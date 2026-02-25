@@ -1,4 +1,4 @@
-import type { Dialogue } from "../../shared/schemas";
+import type { Dialogue } from "../shared/schemas";
 import { bus } from "./bus";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
