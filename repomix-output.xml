@@ -48,20 +48,30 @@ src/
   fixtures/
     dialogue.json
   hooks/
+    useAutoScroll.ts
     useDebate.ts
     useDebateProjection.ts
+    useGradientProjection.ts
+    useLayoutStable.ts
+    useObserverAnchor.ts
     useScrollOwnership.ts
   App.tsx
   bus.ts
   debateMachine.ts
   main.tsx
   replay.ts
+  testBridge.ts
+test-results/
+  .last-run.json
+tests/
+  scroll.spec.ts
 .gitignore
 flake.lock
 flake.nix
 index.html
 index.ts
 package.json
+playwright.config.ts
 server.ts
 tsconfig.json
 vite.config.ts
@@ -69,6 +79,443 @@ vite.config.ts
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="src/hooks/useAutoScroll.ts">
+import { useLayoutEffect, useRef } from "react";
+
+export function useAutoScroll(
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  blocksLength: number,
+  scrollOwner: "machineOwned" | "userOwned",
+  layoutReady: boolean,
+) {
+  const prevLengthRef = useRef(blocksLength);
+  const pendingScrollRef = useRef(false);
+  const restoringRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    if (blocksLength !== prevLengthRef.current) {
+      prevLengthRef.current = blocksLength;
+
+      if (scrollOwner === "machineOwned") {
+        pendingScrollRef.current = true;
+      }
+    }
+
+    if (layoutReady && pendingScrollRef.current) {
+      restoringRef.current = true;
+      el.scrollTop = el.scrollHeight;
+      el.dispatchEvent(new Event("scroll")); // ensure ownership recalculates
+
+      restoringRef.current = false;
+      pendingScrollRef.current = false;
+    }
+  }, [blocksLength, layoutReady, scrollOwner]);
+
+  return restoringRef;
+}
+</file>
+
+<file path="src/hooks/useGradientProjection.ts">
+// src/hooks/useGradientProjection.ts
+import { useEffect, useState } from "react";
+import type { ObserverMetrics } from "./useObserverAnchor";
+
+export function useGradientProjection(
+  observerMetrics: ObserverMetrics | null,
+  layoutReady: boolean,
+  maxDistance: number = 400,
+) {
+  const [intensity, setIntensity] = useState(0);
+  const [normalizedPosition, setNormalizedPosition] = useState(0);
+
+  useEffect(() => {
+    if (!layoutReady || !observerMetrics) return;
+
+    const { midYInViewport, viewportHeight } = observerMetrics;
+
+    const distanceFromViewportBottom = viewportHeight - midYInViewport;
+
+    const normalized = Math.max(
+      0,
+      Math.min(distanceFromViewportBottom / maxDistance, 1),
+    );
+
+    // cubic ease-out
+    const eased = 1 - Math.pow(1 - normalized, 3);
+
+    setNormalizedPosition(normalized);
+    setIntensity(eased);
+  }, [observerMetrics, layoutReady, maxDistance]);
+
+  return { intensity, normalizedPosition };
+}
+</file>
+
+<file path="src/hooks/useLayoutStable.ts">
+// src/hooks/useLayoutStable.ts
+import { useEffect, useState } from "react";
+
+export function useLayoutStable(
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  blocks: unknown[],
+  settleMs: number = 150,
+) {
+  const [ready, setReady] = useState(false);
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const content = el.firstElementChild as HTMLElement | null;
+    if (!content) return;
+
+    setReady(false);
+
+    let timeout: number | null = null;
+
+    const observer = new ResizeObserver(() => {
+      if (timeout) window.clearTimeout(timeout);
+
+      timeout = window.setTimeout(() => {
+        setReady(true);
+        setVersion((v) => v + 1);
+      }, settleMs);
+    });
+
+    observer.observe(content);
+
+    return () => {
+      observer.disconnect();
+      if (timeout) window.clearTimeout(timeout);
+    };
+  }, [scrollRef, blocks.length, settleMs]);
+
+  return { ready, version };
+}
+</file>
+
+<file path="src/hooks/useObserverAnchor.ts">
+// src/hooks/useObserverAnchor.ts
+import { useEffect, useRef, useState } from "react";
+
+export type ObserverMetrics = {
+  midYInViewport: number;
+  bottomInContent: number;
+  viewportHeight: number;
+};
+
+export function useObserverAnchor(
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  layoutReady: boolean,
+) {
+  const observerRef = useRef<HTMLDivElement | null>(null);
+  const [metrics, setMetrics] = useState<ObserverMetrics | null>(null);
+
+  useEffect(() => {
+    if (!layoutReady) return;
+
+    const scroller = scrollRef.current;
+    const observer = observerRef.current;
+
+    if (!scroller || !observer) return;
+
+    const update = () => {
+      const scrollerRect = scroller.getBoundingClientRect();
+      const observerRect = observer.getBoundingClientRect();
+
+      const midYInViewport = observerRect.top + observerRect.height / 2;
+
+      const bottomInContent = observer.offsetTop + observer.offsetHeight;
+
+      const viewportHeight = scroller.clientHeight;
+
+      setMetrics({
+        midYInViewport,
+        bottomInContent,
+        viewportHeight,
+      });
+    };
+
+    update();
+    scroller.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+
+    return () => {
+      scroller.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [layoutReady, scrollRef]);
+
+  return { observerRef, observerMetrics: metrics };
+}
+</file>
+
+<file path="src/testBridge.ts">
+// src/testBridge.ts
+import { bus } from "./bus";
+
+export function installTestBridge() {
+  if (!import.meta.env.DEV && import.meta.env.MODE !== "test") return;
+
+  (window as any).__socratic = {
+    emit: (type: string, payload?: any) => bus.emit(type as any, payload),
+
+    machineEvents: [] as string[],
+
+    onMachineEvent(type: string) {
+      (window as any).__socratic.machineEvents.push(type);
+    },
+  };
+}
+</file>
+
+<file path="test-results/.last-run.json">
+{
+  "status": "passed",
+  "failedTests": []
+}
+</file>
+
+<file path="tests/scroll.spec.ts">
+import { test, expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import type { Turn } from "../shared/schemas";
+
+function turn(i: number): Turn {
+  return {
+    speaker: i % 2 === 0 ? "security_engineer" : "application_engineer",
+    mdx: `Turn ${i}\n\n` + "word ".repeat(200),
+  };
+}
+
+async function appendTurns(page: Page, count: number) {
+  for (let i = 0; i < count; i++) {
+    await page.evaluate((payload: Turn) => {
+      (window as any).__socratic?.emit("APPEND_TURN", payload);
+    }, turn(i));
+  }
+}
+
+async function dumpScrollState(page: Page, label: string) {
+  const state = await page.evaluate(() => {
+    const el = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    return {
+      scrollTop: el.scrollTop,
+      clientHeight: el.clientHeight,
+      scrollHeight: el.scrollHeight,
+      atBottom: el.scrollTop + el.clientHeight >= el.scrollHeight - 5,
+      owner: el.getAttribute("data-scroll-owner"),
+    };
+  });
+
+  console.log(`\n[${label}]`, state);
+}
+
+async function manualScroll(page: Page, delta: number) {
+  await page.evaluate((amount) => {
+    const el = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    el.scrollTop += amount;
+    el.dispatchEvent(new Event("scroll"));
+  }, delta);
+}
+
+async function scrollToBottom(page: Page) {
+  await page.evaluate(() => {
+    const el = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    el.scrollTop = el.scrollHeight;
+    el.dispatchEvent(new Event("scroll"));
+  });
+}
+
+test.beforeEach(async ({ page }) => {
+  page.on("console", (msg) => {
+    console.log(`[browser:${msg.type()}]`, msg.text());
+  });
+});
+
+/* ------------------------------------------------------------
+   Fresh State
+------------------------------------------------------------ */
+
+test("fresh load starts machineOwned", async ({ page }) => {
+  await page.goto("/");
+  await dumpScrollState(page, "fresh load");
+
+  const owner = await page
+    .getByTestId("scroll-viewport")
+    .getAttribute("data-scroll-owner");
+
+  expect(owner).toBe("machineOwned");
+});
+
+/* ------------------------------------------------------------
+   Auto-scroll behavior
+------------------------------------------------------------ */
+
+test("machineOwned auto-scrolls on append", async ({ page }) => {
+  await page.goto("/");
+
+  await appendTurns(page, 8);
+
+  await expect
+    .poll(async () =>
+      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
+    )
+    .toBe("machineOwned");
+
+  await dumpScrollState(page, "after append");
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const el = document.querySelector(
+          "[data-testid='scroll-viewport']",
+        ) as HTMLElement;
+        return el.scrollTop + el.clientHeight >= el.scrollHeight - 5;
+      }),
+    )
+    .toBeTruthy();
+
+  await dumpScrollState(page, "after auto-scroll settle");
+});
+
+test("machineOwned stays machineOwned when appending", async ({ page }) => {
+  await page.goto("/");
+
+  await appendTurns(page, 8);
+  await appendTurns(page, 1);
+
+  await dumpScrollState(page, "after second append");
+
+  const owner = await page
+    .getByTestId("scroll-viewport")
+    .getAttribute("data-scroll-owner");
+
+  expect(owner).toBe("machineOwned");
+});
+
+/* ------------------------------------------------------------
+   Manual Scroll Behavior
+------------------------------------------------------------ */
+
+test("manual scroll up transitions to userOwned", async ({ page }) => {
+  await page.goto("/");
+
+  await appendTurns(page, 8);
+
+  // Ensure starting at bottom
+  await scrollToBottom(page);
+
+  await manualScroll(page, -600);
+
+  await dumpScrollState(page, "after manual scroll up");
+
+  await expect
+    .poll(async () =>
+      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
+    )
+    .toBe("userOwned");
+
+  await dumpScrollState(page, "after ownership transition");
+});
+
+test("userOwned remains userOwned when appending", async ({ page }) => {
+  await page.goto("/");
+
+  await appendTurns(page, 8);
+
+  await scrollToBottom(page);
+  await manualScroll(page, -600);
+
+  await expect
+    .poll(async () =>
+      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
+    )
+    .toBe("userOwned");
+
+  await appendTurns(page, 1);
+
+  await dumpScrollState(page, "after append while userOwned");
+
+  const owner = await page
+    .getByTestId("scroll-viewport")
+    .getAttribute("data-scroll-owner");
+
+  expect(owner).toBe("userOwned");
+});
+
+/* ------------------------------------------------------------
+   Returning to bottom
+------------------------------------------------------------ */
+
+test("scrolling back to bottom transitions to machineOwned", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await appendTurns(page, 8);
+
+  await scrollToBottom(page);
+  await manualScroll(page, -600);
+
+  await expect
+    .poll(async () =>
+      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
+    )
+    .toBe("userOwned");
+
+  await dumpScrollState(page, "after scroll up");
+
+  await scrollToBottom(page);
+
+  await dumpScrollState(page, "after scroll to bottom");
+
+  await expect
+    .poll(async () =>
+      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
+    )
+    .toBe("machineOwned");
+
+  await dumpScrollState(page, "final state");
+});
+</file>
+
+<file path="playwright.config.ts">
+import { defineConfig } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "./tests",
+  timeout: 30_000,
+  use: {
+    headless: true,
+    baseURL: "http://127.0.0.1:5173",
+    browserName: "chromium",
+    launchOptions: {
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH,
+    },
+  },
+  webServer: {
+    command: "bunx vite --host 127.0.0.1 --port 5173",
+    url: "http://127.0.0.1:5173",
+    reuseExistingServer: !process.env.CI,
+    timeout: 60_000,
+  },
+});
+</file>
 
 <file path="src/hooks/useDebate.ts">
 import { useState } from "react";
@@ -143,16 +590,10 @@ import { useEffect, useState } from "react";
 import type { Turn } from "../../shared/schemas";
 import { bus } from "../bus";
 
-export type LayoutBlock = {
+export type LayoutBlock = Turn & {
   id: string;
-  speaker: "security" | "application";
-  mdx: string;
   height?: number;
 };
-
-function mapSpeaker(s: Turn["speaker"]): "security" | "application" {
-  return s === "security_engineer" ? "security" : "application";
-}
 
 export function useDebateProjection() {
   const [blocks, setBlocks] = useState<LayoutBlock[]>([]);
@@ -166,9 +607,8 @@ export function useDebateProjection() {
       setBlocks((prev) => [
         ...prev,
         {
+          ...turn,
           id: crypto.randomUUID(),
-          speaker: mapSpeaker(turn.speaker),
-          mdx: turn.mdx,
         },
       ]);
     }
@@ -199,40 +639,73 @@ import { useEffect, useRef } from "react";
 import type { AnyActorRef } from "xstate";
 
 export function useScrollOwnership(
-  state: any,
   send: AnyActorRef["send"],
-  dependency: unknown,
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  restoringRef: React.MutableRefObject<boolean>,
 ) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-
-  function handleScroll() {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const isAtBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 5;
-
-    if (!isAtBottom) {
-      send({ type: "USER_SCROLLED_UP" });
-    } else {
-      send({ type: "USER_AT_BOTTOM" });
-    }
-  }
+  const lastAtBottomRef = useRef<boolean | null>(null);
+  const lastScrollTopRef = useRef<number>(0);
 
   useEffect(() => {
-    if (state.value.scroll !== "machineOwned") return;
-
     const el = scrollRef.current;
     if (!el) return;
 
-    requestAnimationFrame(() => {
-      el.scrollTo({
-        top: el.scrollHeight,
-        behavior: "smooth",
-      });
-    });
-  }, [state.value.scroll, dependency]);
+    const checkOwnership = () => {
+      const currentScrollTop = el.scrollTop;
+      const atBottom =
+        currentScrollTop + el.clientHeight >= el.scrollHeight - 5;
 
-  return { scrollRef, handleScroll };
+      const scrollingUp = currentScrollTop < lastScrollTopRef.current;
+      const scrollingDown = currentScrollTop > lastScrollTopRef.current;
+
+      console.log("[ownership check]", {
+        scrollTop: currentScrollTop,
+        clientHeight: el.clientHeight,
+        scrollHeight: el.scrollHeight,
+        atBottom,
+        restoring: restoringRef.current,
+        lastAtBottom: lastAtBottomRef.current,
+        scrollingUp,
+        scrollingDown,
+      });
+
+      // Update scrollTop tracker immediately
+      lastScrollTopRef.current = currentScrollTop;
+
+      // Ignore machine-driven scroll restoration
+      if (restoringRef.current) return;
+
+      // If user actively scrolled upward and we are no longer at bottom
+      if (!atBottom && scrollingUp) {
+        if (lastAtBottomRef.current !== false) {
+          lastAtBottomRef.current = false;
+          send({ type: "USER_SCROLLED_UP" });
+        }
+        return;
+      }
+
+      // If we reached bottom (either via user scroll down or auto-scroll)
+      if (atBottom) {
+        if (lastAtBottomRef.current !== true) {
+          lastAtBottomRef.current = true;
+          send({ type: "USER_AT_BOTTOM" });
+        }
+      }
+    };
+
+    el.addEventListener("scroll", checkOwnership, { passive: true });
+
+    // Initialize tracking state
+    lastScrollTopRef.current = el.scrollTop;
+    lastAtBottomRef.current =
+      el.scrollTop + el.clientHeight >= el.scrollHeight - 5;
+
+    checkOwnership();
+
+    return () => {
+      el.removeEventListener("scroll", checkOwnership);
+    };
+  }, [send, scrollRef, restoringRef]);
 }
 </file>
 
@@ -263,6 +736,33 @@ import { setup, assign, fromPromise } from "xstate";
 import type { Dialogue } from "../shared/schemas";
 import { replayDialogue } from "./replay";
 
+/* ------------------------------------------------------------
+   Utilities
+------------------------------------------------------------ */
+
+function now() {
+  return typeof performance !== "undefined"
+    ? performance.now().toFixed(2)
+    : Date.now();
+}
+
+function emitTestEvent(type: string, payload?: any) {
+  if (typeof window !== "undefined") {
+    const w = window as any;
+    if (w.__socratic?.onMachineEvent) {
+      w.__socratic.onMachineEvent({ type, payload });
+    }
+  }
+}
+
+function deepClone<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v));
+}
+
+/* ------------------------------------------------------------
+   Machine
+------------------------------------------------------------ */
+
 export const debateMachine = setup({
   types: {
     context: {} as {
@@ -277,10 +777,70 @@ export const debateMachine = setup({
       | { type: "FAIL"; error: string },
   },
 
+  /* ------------------------------------------------------------
+     Global Instrumentation
+  ------------------------------------------------------------ */
+
+  actions: {
+    logTransition: ({ context, event, self }) => {
+      const snapshot = self.getSnapshot();
+
+      const lifecycleState =
+        typeof snapshot.value === "object" && "lifecycle" in snapshot.value
+          ? snapshot.value.lifecycle
+          : snapshot.value;
+
+      const scrollState =
+        typeof snapshot.value === "object" && "scroll" in snapshot.value
+          ? snapshot.value.scroll
+          : null;
+
+      const logPayload = {
+        t: now(),
+        event: event.type,
+        lifecycle: lifecycleState,
+        scroll: scrollState,
+        context: deepClone(context),
+      };
+
+      console.log("[machine transition]", logPayload);
+      emitTestEvent("TRANSITION", logPayload);
+    },
+
+    logUserAtBottom: ({ context }) => {
+      const payload = {
+        t: now(),
+        type: "USER_AT_BOTTOM",
+        context: deepClone(context),
+      };
+      console.log("[machine] USER_AT_BOTTOM", payload);
+      emitTestEvent("USER_AT_BOTTOM", payload);
+    },
+
+    logUserScrolledUp: ({ context }) => {
+      const payload = {
+        t: now(),
+        type: "USER_SCROLLED_UP",
+        context: deepClone(context),
+      };
+      console.log("[machine] USER_SCROLLED_UP", payload);
+      emitTestEvent("USER_SCROLLED_UP", payload);
+    },
+  },
+
   actors: {
     replayActor: fromPromise(
       async ({ input }: { input: { dialogue: Dialogue } }) => {
+        console.log("[machine] replayActor invoked", {
+          t: now(),
+          turns: input.dialogue.turns.length,
+        });
+
         await replayDialogue(input.dialogue);
+
+        console.log("[machine] replayActor completed", {
+          t: now(),
+        });
       },
     ),
   },
@@ -294,31 +854,41 @@ export const debateMachine = setup({
   },
 
   states: {
-    // ========================
-    // LIFECYCLE
-    // ========================
     lifecycle: {
       initial: "idle",
+
       states: {
         idle: {
+          entry: "logTransition",
+
           on: {
             GENERATE: {
               target: "ready",
-              actions: assign({
-                dialogue: ({ event }) => event.dialogue,
-                error: () => null,
-              }),
+              actions: [
+                assign({
+                  dialogue: ({ event }) => event.dialogue,
+                  error: () => null,
+                }),
+                "logTransition",
+              ],
             },
           },
         },
 
         ready: {
+          entry: "logTransition",
+
           on: {
-            REPLAY: "replaying",
+            REPLAY: {
+              target: "replaying",
+              actions: "logTransition",
+            },
           },
         },
 
         replaying: {
+          entry: "logTransition",
+
           invoke: {
             src: "replayActor",
             input: ({ context }) => {
@@ -329,57 +899,97 @@ export const debateMachine = setup({
             },
             onDone: {
               target: "complete",
+              actions: "logTransition",
             },
             onError: {
               target: "error",
-              actions: assign({
-                error: ({ event }) => String(event.error),
-              }),
+              actions: [
+                assign({
+                  error: ({ event }) => String(event.error),
+                }),
+                "logTransition",
+              ],
             },
           },
         },
 
         complete: {
+          entry: "logTransition",
+
           on: {
-            REPLAY: "replaying",
+            REPLAY: {
+              target: "replaying",
+              actions: "logTransition",
+            },
           },
         },
 
         error: {
+          entry: "logTransition",
+
           on: {
             GENERATE: {
               target: "ready",
-              actions: assign({
-                dialogue: ({ event }) => event.dialogue,
-                error: () => null,
-              }),
+              actions: [
+                assign({
+                  dialogue: ({ event }) => event.dialogue,
+                  error: () => null,
+                }),
+                "logTransition",
+              ],
             },
           },
         },
       },
     },
 
-    // ========================
-    // SCROLL OWNERSHIP
-    // ========================
     scroll: {
       initial: "machineOwned",
+
       states: {
         machineOwned: {
+          entry: "logTransition",
+
           on: {
-            USER_SCROLLED_UP: "userOwned",
+            USER_SCROLLED_UP: {
+              target: "userOwned",
+              actions: ["logUserScrolledUp", "logTransition"],
+            },
           },
         },
 
         userOwned: {
+          entry: "logTransition",
+
           on: {
-            USER_AT_BOTTOM: "machineOwned",
+            USER_AT_BOTTOM: {
+              target: "machineOwned",
+              actions: ["logUserAtBottom", "logTransition"],
+            },
           },
         },
       },
     },
   },
 });
+</file>
+
+<file path="src/main.tsx">
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import { App } from "./App";
+import { installTestBridge } from "./testBridge";
+
+installTestBridge();
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <ChakraProvider value={defaultSystem}>
+      <App />
+    </ChakraProvider>
+  </React.StrictMode>,
+);
 </file>
 
 <file path="src/replay.ts">
@@ -402,6 +1012,7 @@ export async function replayDialogue(dialogue: Dialogue) {
   bus.emit("REPLAY_START");
 
   for (const turn of dialogue.turns) {
+    console.log("[bus] APPEND_TURN");
     bus.emit("APPEND_TURN", turn);
 
     const delay = computeDelay(turn.mdx);
@@ -411,21 +1022,6 @@ export async function replayDialogue(dialogue: Dialogue) {
 
   bus.emit("REPLAY_COMPLETE");
 }
-</file>
-
-<file path="src/main.tsx">
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
-import { App } from "./App";
-
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <ChakraProvider value={defaultSystem}>
-      <App />
-    </ChakraProvider>
-  </React.StrictMode>,
-);
 </file>
 
 <file path=".gitignore">
@@ -509,11 +1105,11 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1771858127,
-        "narHash": "sha256-Gtre9YoYl3n25tJH2AoSdjuwcqij5CPxL3U3xysYD08=",
+        "lastModified": 1772024342,
+        "narHash": "sha256-+eXlIc4/7dE6EcPs9a2DaSY3fTA9AE526hGqkNID3Wg=",
         "owner": "cachix",
         "repo": "git-hooks.nix",
-        "rev": "49bbbfc218bf3856dfa631cead3b052d78248b83",
+        "rev": "6e34e97ed9788b17796ee43ccdbaf871a5c2b476",
         "type": "github"
       },
       "original": {
@@ -671,26 +1267,26 @@ export function MdxRenderer({ content }: { content: string }) {
   return (
     <Box
       css={{
-        "& p": { mb: 3, lineHeight: 1.7 },
-        "& ul": { pl: 6, mb: 3 },
-        "& li": { mb: 1.5 },
+        "& p": { marginBottom: "1rem", lineHeight: 1.8 },
+        "& ul": { paddingLeft: "1.4rem", marginBottom: "1rem" },
+        "& li": { marginBottom: "0.4rem" },
         "& pre": {
-          bg: "surface",
-          p: 4,
-          borderRadius: "lg",
-          borderWidth: "1px",
+          background: "rgba(255,255,255,0.04)",
+          padding: "1rem",
+          borderRadius: "12px",
+          border: "1px solid rgba(255,255,255,0.06)",
           overflowX: "auto",
+          fontSize: "0.9rem",
         },
         "& code": {
-          bg: "subtle",
-          px: 2,
-          py: 1,
-          borderRadius: "md",
+          background: "rgba(255,255,255,0.08)",
+          padding: "0.2rem 0.4rem",
+          borderRadius: "6px",
         },
         "& svg": {
-          bg: "surface",
-          borderRadius: "lg",
-          p: 2,
+          background: "rgba(255,255,255,0.03)",
+          borderRadius: "12px",
+          padding: "0.5rem",
         },
       }}
     >
@@ -740,7 +1336,7 @@ export function MdxRenderer({ content }: { content: string }) {
 
 <file path="flake.nix">
 {
-  description = "Platform-independent Bun + Vite dev shell with pre-commit hooks";
+  description = "Bun + Vite + Playwright + Pre-commit multi-platform dev shell";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -769,7 +1365,7 @@ export function MdxRenderer({ content }: { content: string }) {
             trufflehog.enable = true;
             ripsecrets.enable = true;
 
-            # Nice hygiene
+            # Hygiene
             nixfmt.enable = true;
             end-of-file-fixer.enable = true;
             trim-trailing-whitespace.enable = true;
@@ -782,11 +1378,16 @@ export function MdxRenderer({ content }: { content: string }) {
         devShells.default = pkgs.mkShell {
           packages = [
             pkgs.bun
+            pkgs.chromium
           ]
           ++ preCommit.enabledPackages;
 
           shellHook = ''
             ${preCommit.shellHook}
+
+            export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+            export PLAYWRIGHT_CHROMIUM_PATH=${pkgs.chromium}/bin/chromium
+            export PLAYWRIGHT_BROWSERS_PATH=0
           '';
         };
       }
@@ -976,9 +1577,14 @@ Bun.serve({
   "scripts": {
     "dev:server": "bun --watch server.ts",
     "dev:client": "vite",
-    "dev": "concurrently -k -n server,client -c blue,green \"bun run dev:server\" \"bun run dev:client\""
+    "dev": "concurrently -k -n server,client -c blue,green \"bun run dev:server\" \"bun run dev:client\"",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:trace": "playwright test --trace on",
+    "test:debug": "playwright test --debug"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/bun": "latest",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -1016,12 +1622,19 @@ Bun.serve({
 <file path="src/App.tsx">
 // src/App.tsx
 import React from "react";
-import { Box, Button, Input } from "@chakra-ui/react";
+import { Box, Button, Input, Text } from "@chakra-ui/react";
+import { motion } from "framer-motion";
 import { useDebate } from "./hooks/useDebate";
 import { useDebateProjection } from "./hooks/useDebateProjection";
+import { useLayoutStable } from "./hooks/useLayoutStable";
+import { useObserverAnchor } from "./hooks/useObserverAnchor";
+import { useGradientProjection } from "./hooks/useGradientProjection";
 import { useScrollOwnership } from "./hooks/useScrollOwnership";
+import { useAutoScroll } from "./hooks/useAutoScroll";
 import { MdxRenderer } from "./components/MdxRenderer";
 import { bus } from "./bus";
+
+const MotionBox = motion(Box);
 
 export function App() {
   const { prompt, setPrompt, loading, state, send, generate, replay } =
@@ -1029,32 +1642,75 @@ export function App() {
 
   const blocks = useDebateProjection();
 
-  const { scrollRef, handleScroll } = useScrollOwnership(
-    state,
-    send,
-    blocks.length,
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
+
+  // 1️⃣ Wait for layout (MDX + Mermaid) to stabilize
+  const { ready: layoutReady } = useLayoutStable(scrollRef, blocks);
+
+  // 2️⃣ Attach observer to bottom of content
+  const { observerRef, observerMetrics } = useObserverAnchor(
+    scrollRef,
+    layoutReady,
   );
+
+  // 3️⃣ Project observer geometry into gradient intensity
+  const { intensity } = useGradientProjection(observerMetrics, layoutReady);
+
+  // Extract scroll owner from state machine
+  const scrollOwner =
+    typeof state.value === "object" && "scroll" in state.value
+      ? state.value.scroll
+      : "machineOwned";
+
+  // 4️⃣ Auto-scroll (returns restoringRef)
+  const restoringRef = useAutoScroll(
+    scrollRef,
+    blocks.length,
+    scrollOwner,
+    layoutReady,
+  );
+
+  // 5️⃣ Ownership (suppressed while restoring)
+  useScrollOwnership(send, scrollRef, restoringRef);
 
   return (
     <Box
       height="100vh"
+      bg="#0d0f14"
+      color="#e6e8ec"
+      fontSize="17px"
+      lineHeight="1.8"
       display="flex"
       flexDirection="column"
-      bg="bg"
-      color="fg"
     >
       {/* Prompt Bar */}
       <Box
-        px="6"
-        py="3"
-        borderBottomWidth="1px"
+        position="sticky"
+        top="0"
+        zIndex="10"
+        px="48px"
+        py="20px"
         display="flex"
-        gap="3"
-        flexShrink={0}
+        gap="14px"
+        backdropFilter="blur(12px)"
+        bg="rgba(13,15,20,0.78)"
+        borderBottom="1px solid rgba(255,255,255,0.05)"
       >
-        <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+        <Input
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Zero trust in microservices…"
+          bg="rgba(255,255,255,0.05)"
+          border="1px solid rgba(255,255,255,0.08)"
+          _focus={{ borderColor: "rgba(120,170,255,0.6)" }}
+        />
 
-        <Button colorScheme="blue" onClick={generate} loading={loading}>
+        <Button
+          onClick={generate}
+          loading={loading}
+          bg="rgba(255,255,255,0.08)"
+          _hover={{ bg: "rgba(255,255,255,0.14)" }}
+        >
           Generate
         </Button>
 
@@ -1062,50 +1718,128 @@ export function App() {
           variant="outline"
           onClick={replay}
           disabled={!state.context.dialogue}
+          border="1px solid rgba(255,255,255,0.1)"
         >
           Replay
         </Button>
       </Box>
 
-      {/* Debate Surface */}
-      <Box
-        ref={scrollRef}
-        flex="1"
-        overflowY="auto"
-        minH="0"
-        onScroll={handleScroll}
-      >
-        {blocks.map((block) => (
-          <TurnRow key={block.id} block={block} />
-        ))}
+      {/* Debate Stage Wrapper */}
+      <Box flex="1" position="relative">
+        {/* Scroll Viewport */}
+        <Box
+          ref={scrollRef}
+          position="absolute"
+          inset="0"
+          overflowY="auto"
+          data-testid="scroll-viewport"
+          data-layout-ready={layoutReady ? "true" : "false"}
+          data-scroll-owner={state.value.scroll}
+        >
+          {/* Content Wrapper */}
+          <Box pt="160px" pb="160px">
+            {blocks.map((block, i) => (
+              <TurnRow key={block.id} block={block} index={i} />
+            ))}
+
+            {/* 2️⃣ Observer Anchor — must be last in content */}
+            <Box
+              ref={observerRef}
+              data-testid="observer-anchor"
+              height="1px"
+              width="100%"
+            />
+          </Box>
+        </Box>
+
+        {/* 3️⃣ Bottom Gradient — fixed to viewport bottom */}
+        <Box
+          pointerEvents="none"
+          data-testid="background-gradient"
+          data-intensity={intensity.toFixed(4)}
+          position="absolute"
+          bottom="0"
+          left="0"
+          right="0"
+          height="44px"
+          bg={`linear-gradient(
+            to top,
+            rgba(120,170,255, ${0.32 * intensity}) 0%,
+            rgba(120,170,255, ${0.18 * intensity}) 55%,
+            rgba(120,170,255, 0) 100%
+          )`}
+        />
       </Box>
     </Box>
   );
 }
 
-function TurnRow({ block }: { block: any }) {
+function TurnRow({ block, index }: { block: any; index: number }) {
   return (
-    <Box display="grid" gridTemplateColumns="1fr 1fr" px="4" py="2">
-      <Box>
-        {block.speaker === "security" ? (
-          <MeasuredBubble id={block.id} content={block.mdx} />
-        ) : (
-          <Box height={block.height ? `${block.height}px` : "0px"} />
-        )}
-      </Box>
-
-      <Box>
-        {block.speaker === "application" ? (
-          <MeasuredBubble id={block.id} content={block.mdx} />
-        ) : (
-          <Box height={block.height ? `${block.height}px` : "0px"} />
-        )}
-      </Box>
+    <Box
+      display="grid"
+      gridTemplateColumns={{ base: "1fr", md: "1fr 1fr" }}
+      px={{ base: "6vw", md: "8vw" }}
+      py="100px"
+      mt={index > 0 ? "-30px" : "0px"}
+      position="relative"
+    >
+      <Pane
+        side="left"
+        speaker={block.speaker}
+        active="security_engineer"
+        block={block}
+      />
+      <Pane
+        side="right"
+        speaker={block.speaker}
+        active="application_engineer"
+        block={block}
+      />
     </Box>
   );
 }
 
-function MeasuredBubble({ id, content }: { id: string; content: string }) {
+function Pane({
+  side,
+  speaker,
+  active,
+  block,
+}: {
+  side: "left" | "right";
+  speaker: string;
+  active: string;
+  block: any;
+}) {
+  const isActive = speaker === active;
+
+  return (
+    <Box
+      display="flex"
+      alignItems="center"
+      justifyContent={
+        side === "left" ? "flex-start" : { base: "flex-start", md: "flex-end" }
+      }
+      minH={{ base: "auto", md: "320px" }}
+    >
+      {isActive ? (
+        <MeasuredBubble id={block.id} content={block.mdx} speaker={speaker} />
+      ) : (
+        <Box height={block.height ? `${block.height}px` : "0px"} />
+      )}
+    </Box>
+  );
+}
+
+function MeasuredBubble({
+  id,
+  content,
+  speaker,
+}: {
+  id: string;
+  content: string;
+  speaker: string;
+}) {
   const ref = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
@@ -1126,19 +1860,38 @@ function MeasuredBubble({ id, content }: { id: string; content: string }) {
     return () => observer.disconnect();
   }, [id]);
 
+  const isSecurity = speaker === "security_engineer";
+
   return (
-    <Box
+    <MotionBox
+      data-testid="turn-bubble"
       ref={ref}
-      maxW="90%"
-      borderWidth="1px"
-      borderRadius="md"
-      px="3"
-      py="2"
-      fontSize="sm"
-      lineHeight="1.5"
+      transition={{ duration: 0.4, ease: "easeOut" }}
+      width="70vw"
+      maxW="1100px"
+      fontSize="18px"
+      borderLeft={isSecurity ? "3px solid rgba(120,170,255,0.35)" : undefined}
+      borderRight={!isSecurity ? "3px solid rgba(255,180,120,0.35)" : undefined}
+      pl={isSecurity ? "28px" : undefined}
+      pr={!isSecurity ? "24px" : undefined}
+      display={!isSecurity ? "flex" : "block"}
+      flexDirection="column"
+      alignItems={!isSecurity ? "flex-end" : undefined}
     >
-      <MdxRenderer content={content} />
-    </Box>
+      <Text
+        fontSize="13px"
+        letterSpacing="0.08em"
+        textTransform="uppercase"
+        opacity="0.6"
+        mb="16px"
+      >
+        {isSecurity ? "Security Engineer" : "Application Engineer"}
+      </Text>
+
+      <Box width="100%" textAlign="left">
+        <MdxRenderer content={content} />
+      </Box>
+    </MotionBox>
   );
 }
 </file>

@@ -17,6 +17,7 @@ export async function replayDialogue(dialogue: Dialogue) {
   bus.emit("REPLAY_START");
 
   for (const turn of dialogue.turns) {
+    console.log("[bus] APPEND_TURN");
     bus.emit("APPEND_TURN", turn);
 
     const delay = computeDelay(turn.mdx);

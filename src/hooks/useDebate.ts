@@ -10,12 +10,14 @@ import { debateMachine } from "../debateMachine";
 
 const USE_STATIC_FIXTURE = true;
 
-export function useDebate() {
+export function useDebate(inspect?: any) {
   const [prompt, setPrompt] = useState("Zero trust in microservices");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [state, send] = useMachine(debateMachine);
+  const [state, send] = useMachine(debateMachine, {
+    inspect,
+  });
 
   async function generate() {
     setLoading(true);

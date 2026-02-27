@@ -2,16 +2,10 @@ import { useEffect, useState } from "react";
 import type { Turn } from "../../shared/schemas";
 import { bus } from "../bus";
 
-export type LayoutBlock = {
+export type LayoutBlock = Turn & {
   id: string;
-  speaker: "security" | "application";
-  mdx: string;
   height?: number;
 };
-
-function mapSpeaker(s: Turn["speaker"]): "security" | "application" {
-  return s === "security_engineer" ? "security" : "application";
-}
 
 export function useDebateProjection() {
   const [blocks, setBlocks] = useState<LayoutBlock[]>([]);
@@ -25,9 +19,8 @@ export function useDebateProjection() {
       setBlocks((prev) => [
         ...prev,
         {
+          ...turn,
           id: crypto.randomUUID(),
-          speaker: mapSpeaker(turn.speaker),
-          mdx: turn.mdx,
         },
       ]);
     }

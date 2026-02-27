@@ -1,5 +1,5 @@
 {
-  description = "Platform-independent Bun + Vite dev shell with pre-commit hooks";
+  description = "Bun + Vite + Playwright + Pre-commit multi-platform dev shell";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -28,7 +28,7 @@
             trufflehog.enable = true;
             ripsecrets.enable = true;
 
-            # Nice hygiene
+            # Hygiene
             nixfmt.enable = true;
             end-of-file-fixer.enable = true;
             trim-trailing-whitespace.enable = true;
@@ -41,11 +41,16 @@
         devShells.default = pkgs.mkShell {
           packages = [
             pkgs.bun
+            pkgs.chromium
           ]
           ++ preCommit.enabledPackages;
 
           shellHook = ''
             ${preCommit.shellHook}
+
+            export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+            export PLAYWRIGHT_CHROMIUM_PATH=${pkgs.chromium}/bin/chromium
+            export PLAYWRIGHT_BROWSERS_PATH=0
           '';
         };
       }

@@ -8,26 +8,26 @@ export function MdxRenderer({ content }: { content: string }) {
   return (
     <Box
       css={{
-        "& p": { mb: 3, lineHeight: 1.7 },
-        "& ul": { pl: 6, mb: 3 },
-        "& li": { mb: 1.5 },
+        "& p": { marginBottom: "1rem", lineHeight: 1.8 },
+        "& ul": { paddingLeft: "1.4rem", marginBottom: "1rem" },
+        "& li": { marginBottom: "0.4rem" },
         "& pre": {
-          bg: "surface",
-          p: 4,
-          borderRadius: "lg",
-          borderWidth: "1px",
+          background: "rgba(255,255,255,0.04)",
+          padding: "1rem",
+          borderRadius: "12px",
+          border: "1px solid rgba(255,255,255,0.06)",
           overflowX: "auto",
+          fontSize: "0.9rem",
         },
         "& code": {
-          bg: "subtle",
-          px: 2,
-          py: 1,
-          borderRadius: "md",
+          background: "rgba(255,255,255,0.08)",
+          padding: "0.2rem 0.4rem",
+          borderRadius: "6px",
         },
         "& svg": {
-          bg: "surface",
-          borderRadius: "lg",
-          p: 2,
+          background: "rgba(255,255,255,0.03)",
+          borderRadius: "12px",
+          padding: "0.5rem",
         },
       }}
     >
