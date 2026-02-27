@@ -255,6 +255,27 @@ export function useObserverAnchor(
 }
 </file>
 
+<file path="src/bus.ts">
+import mitt from "mitt";
+import type { Turn } from "../shared/schemas";
+
+export type Pane = "security" | "application";
+
+export type Events = {
+  REPLAY_START: void;
+  APPEND_TURN: Turn;
+  REPLAY_COMPLETE: void;
+
+  // NEW
+  TURN_RENDERED: {
+    id: string;
+    height: number;
+  };
+};
+
+export const bus = mitt<Events>();
+</file>
+
 <file path="src/testBridge.ts">
 // src/testBridge.ts
 import { bus } from "./bus";
@@ -494,6 +515,61 @@ test("scrolling back to bottom transitions to machineOwned", async ({
 });
 </file>
 
+<file path=".gitignore">
+# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+*.tgz
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
+</file>
+
+<file path="index.html">
+<!doctype html>
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <title>Minimal Bun + React</title>
+    </head>
+    <body>
+        <div id="root"></div>
+        <script type="module" src="/src/main.tsx"></script>
+    </body>
+</html>
+</file>
+
+<file path="index.ts">
+console.log("Hello via Bun!");
+</file>
+
 <file path="playwright.config.ts">
 import { defineConfig } from "@playwright/test";
 
@@ -517,6 +593,77 @@ export default defineConfig({
 });
 </file>
 
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+
+    "noEmit": true,
+
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true
+  },
+  "include": ["src", "shared", "server.ts"]
+}
+</file>
+
+<file path="vite.config.ts">
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    proxy: {
+      "/api": "http://localhost:3001",
+    },
+  },
+});
+</file>
+
+<file path="src/fixtures/dialogue.json">
+{
+  "topic": "Zero trust in microservices",
+  "turns": [
+    {
+      "speaker": "security_engineer",
+      "mdx": "We should adopt a strict zero-trust posture for east‑west traffic using workload identities (SPIFFE), mTLS between sidecars, and OPA for fine‑grained policy enforcement.\n\nKey points:\n\n- Authenticate by identity, not network: SPIFFE SVIDs issued by SPIRE; short‑lived X.509 (or JWT‑SVID) for revocation-free rotation.\n- Encrypt and authorize at the edge of the workload: Envoy/sidecar mTLS, Envoy RBAC + OPA as an external authorizer.\n- Deny‑by‑default RBAC and attribute‑based policies (OPA/Rego) for sensitive calls (database, secrets manager).\n- Rollout strategy: permissive mTLS -> canary (5–25%) -> all, and use chaos engineering to verify cert expiry recovery paths.\n\nConcrete failure cases to prepare for:\n\n- SPIRE control plane compromise: have offline root CA and automated rotation playbooks.\n- Certificate expiry or network partition: use permissive mode with strict audit for short windows and automatic restart/renewal agents.\n\nI expect pushback on complexity and latency; I’ll address trade‑offs if you outline those concerns."
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "I agree with identity‑first goals, but I push back on mandatory sidecars + Envoy for every service because of operational and performance costs.\n\nProblems I see:\n\n- CPU and latency: Envoy sidecars add p99 tail latency and ~5–15% CPU overhead in polyglot fleets.\n- Integration friction: not every runtime team can embed SPIFFE SDKs; sidecars can be heavy for small services (FaaS/edge devices).\n- Centralized OPA policies become deployment coupling: a policy change can break many services and slow down releases.\n\nA pragmatic alternative I propose:\n\n- North‑south: API gateway enforces strong auth (JWT introspection, rate limiting, WAF). Use token caches and introspection caching.\n- East‑west hybrid: critical services use SPIFFE mTLS; noncritical internal calls use signed JWTs with short TTL + local verification.\n- Gradual rollout: start gateway + JWTs, then progressively onboard service mesh for high‑risk paths.\n\nI want to see concrete latency measurements and rollout knobs before committing cluster‑wide sidecars."
+    },
+    {
+      "speaker": "security_engineer",
+      "mdx": "Good points — latency and operational burden are real. Still, JWTs and gateway‑only enforcement have concrete attack windows:\n\n- Replay and revocation: long‑lived JWTs are hard to revoke; token introspection adds central dependency and latency spikes.\n- Gateway compromise: a single compromised ingress gateway could mint or forward tokens to east‑west paths if we rely on gateway trust alone.\n\nHow we mitigate while addressing your concerns:\n\n- Use SPIFFE short‑lived SVIDs (X.509 or JWT‑SVID). TTLs of 10–30 minutes eliminate long revocation windows and avoid introspection for every call.\n- Reduce sidecar overhead: leverage eBPF or kernel bypass (Envoy’s XDP/AF_XDP or gVisor bypass patterns) for hot paths; restrict full proxy to critical services.\n- Rollout concretely:\n  - Phase 1: deploy SPIRE server + agents on control plane nodes; run Envoy in permissive mode (mTLS verified but not required) for 2 weeks.\n  - Phase 2: canary 5% of services with enforced mTLS and OPA policies; monitor p99 auth latency, CPU delta, and error rate.\n  - Phase 3: expand by risk category.\n\nFailure/callback plan:\n\n- If SPIRE unavailable, agents continue serving cached SVIDs until expiry; set TTLs short but long enough to survive brief outages (e.g., 15m).\n- For wider outages, auto‑rollback to permissive with strict logging and alerts, not fail‑open permanently."
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "Accepting JWT replay concerns and the SPIFFE short‑lived solution helps. Still, the devil is in operational details and developer velocity.\n\nOperational trade‑offs I want addressed before full adoption:\n\n- SDK vs sidecar: SDKs avoid heavy sidecars but create language‑specific maintenance across many teams. Sidecars centralize complexity but hurt resource budgets.\n- Observability/perf KPIs: we need concrete thresholds before canary expansion (acceptable p99 increase, CPU budget per pod, memory).\n- Policy ownership: OPA as a centralized policy store needs guardrails (policy review workflow, testing harnesses).\n\nProposed hybrid implementation to compromise:\n\n- Use SPIRE agents + sidecars for critical, high‑risk services (payments, auth, db proxies).\n- Use JWT‑SVID (SPIFFE supports JWT‑SVID) for lightweight validation in low‑risk services — apps validate locally with a stable public key bundle.\n- Deploy OPA as a local sidecar for low latency but keep a central OPA server for policy authorship and CI testing; use policy signing and automated promotion.\n\nAlso, we should create canary KPIs: start at 5% traffic, expand if p99 auth latency delta <2ms and CPU overhead <5%."
+    },
+    {
+      "speaker": "security_engineer",
+      "mdx": "I like the hybrid shape and it's consistent with SPIFFE capabilities. A few concrete mechanisms and operational controls I insist on:\n\n- Use JWT‑SVIDs where appropriate: SPIRE issues JWT‑SVIDs so apps can validate tokens offline using the trust bundle (no introspection). This addresses your SDK concern without sacrificing short TTLs.\n- Policy enforcement: use Envoy RBAC + OPA plugin for complex attribute logic; OPA Gatekeeper for K8s admission controls to stop misconfigurations.\n- Failover and TTL specifics:\n  - Certificate/SVID TTL: 10–30 minutes (trade‑off: shorter TTL reduces compromise window but increases issuance load).\n  - SPIRE HA: run SPIRE server as an HA set; monitor issuance latency and queue length; alert at issuance latency >500ms or queue >1000.\n- Rollback strategy: permissive mode with strict audit for a maximum window (e.g., 4 hours) and automated rollback if:\n  - p99 auth latency increases >2ms above baseline, or\n  - request error rate increases by >1% absolute, or\n  - CPU overhead >7% on canary pods.\n\nMinimal diagram of the flow:\n\n```mermaid\nflowchart LR\n  A[workload] -->|fetch SVID| B[SPIRE agent]\n  A -->|mTLS| C[sidecar Envoy]\n  C -->|policy check| D[OPA sidecar]\n  D --> E[target service]\n```\n\nI’ll own SPIRE outage playbooks and automated alerts if we agree on the KPI thresholds above."
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "That diagram and the concrete thresholds make the plan actionable. I accept the hybrid architecture provided we lock down these operational SLAs and automation steps:\n\n- KPIs and rollout gates:\n  - Canary progression: 5% -> 25% -> 100% when p99 auth latency delta <= 2ms and CPU overhead <= 5%.\n  - If error rate increases >1% or auth failures >0.1% for 10 minutes, auto‑rollback to permissive for affected canaries.\n- Performance mitigations:\n  - Use eBPF for in‑kernel fast path where possible and an Envoy wasm filter for lightweight policy checks.\n  - Cache public bundles for JWT‑SVID validation, refresh off‑peak.\n- Responsibilities:\n  - Security owns SPIRE HA, TTL tuning, and automated rollback playbooks.\n  - Platform owns sidecar deployment patterns, eBPF integration, and a policy CI that validates Rego on test traffic.\n\nIf you commit to those duties and the canary gates, I’ll start a pilot with three critical services and measure metrics for two weeks before broader rollout."
+    }
+  ]
+}
+</file>
+
 <file path="src/hooks/useDebate.ts">
 import { useState } from "react";
 import { useMachine } from "@xstate/react";
@@ -530,12 +677,14 @@ import { debateMachine } from "../debateMachine";
 
 const USE_STATIC_FIXTURE = true;
 
-export function useDebate() {
+export function useDebate(inspect?: any) {
   const [prompt, setPrompt] = useState("Zero trust in microservices");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [state, send] = useMachine(debateMachine);
+  const [state, send] = useMachine(debateMachine, {
+    inspect,
+  });
 
   async function generate() {
     setLoading(true);
@@ -707,27 +856,6 @@ export function useScrollOwnership(
     };
   }, [send, scrollRef, restoringRef]);
 }
-</file>
-
-<file path="src/bus.ts">
-import mitt from "mitt";
-import type { Turn } from "../shared/schemas";
-
-export type Pane = "security" | "application";
-
-export type Events = {
-  REPLAY_START: void;
-  APPEND_TURN: Turn;
-  REPLAY_COMPLETE: void;
-
-  // NEW
-  TURN_RENDERED: {
-    id: string;
-    height: number;
-  };
-};
-
-export const bus = mitt<Events>();
 </file>
 
 <file path="src/debateMachine.ts">
@@ -975,18 +1103,29 @@ export const debateMachine = setup({
 </file>
 
 <file path="src/main.tsx">
+// src/main.tsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { App } from "./App";
 import { installTestBridge } from "./testBridge";
 
+let inspector: ReturnType<
+  typeof import("@statelyai/inspect").createBrowserInspector
+> | null = null;
+
+if (import.meta.env.DEV) {
+  const { createBrowserInspector } = await import("@statelyai/inspect");
+
+  inspector = createBrowserInspector();
+}
+
 installTestBridge();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ChakraProvider value={defaultSystem}>
-      <App />
+      <App inspector={inspector} />
     </ChakraProvider>
   </React.StrictMode>,
 );
@@ -1022,43 +1161,6 @@ export async function replayDialogue(dialogue: Dialogue) {
 
   bus.emit("REPLAY_COMPLETE");
 }
-</file>
-
-<file path=".gitignore">
-# dependencies (bun install)
-node_modules
-
-# output
-out
-dist
-*.tgz
-
-# code coverage
-coverage
-*.lcov
-
-# logs
-logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
-
-# dotenv environment variable files
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-
-# caches
-.eslintcache
-.cache
-*.tsbuildinfo
-
-# IntelliJ based IDEs
-.idea
-
-# Finder (MacOS) folder config
-.DS_Store
 </file>
 
 <file path="flake.lock">
@@ -1199,61 +1301,48 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 }
 </file>
 
-<file path="index.html">
-<!doctype html>
-<html>
-    <head>
-        <meta charset="UTF-8" />
-        <title>Minimal Bun + React</title>
-    </head>
-    <body>
-        <div id="root"></div>
-        <script type="module" src="/src/main.tsx"></script>
-    </body>
-</html>
-</file>
+<file path="shared/schemas.ts">
+// shared/schemas.ts
+import { z } from "zod";
 
-<file path="index.ts">
-console.log("Hello via Bun!");
-</file>
-
-<file path="tsconfig.json">
-{
-  "compilerOptions": {
-    "target": "ESNext",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "jsx": "react-jsx",
-
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "moduleDetection": "force",
-    "verbatimModuleSyntax": true,
-    "allowImportingTsExtensions": true,
-
-    "noEmit": true,
-
-    "strict": true,
-    "skipLibCheck": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true
-  },
-  "include": ["src", "shared", "server.ts"]
-}
-</file>
-
-<file path="vite.config.ts">
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    proxy: {
-      "/api": "http://localhost:3001",
-    },
-  },
+/**
+ * Prompt Input
+ */
+export const PromptRequestSchema = z.object({
+  prompt: z.string().min(1),
 });
+
+/**
+ * Speakers
+ */
+export const SpeakerSchema = z.enum([
+  "security_engineer",
+  "application_engineer",
+]);
+
+export type Speaker = z.infer<typeof SpeakerSchema>;
+
+/**
+ * A single conversational turn.
+ * mdx is markdown/MDX-ish content (we'll render as markdown).
+ * Mermaid diagrams are expressed as ```mermaid code fences inside mdx.
+ */
+export const TurnSchema = z.object({
+  speaker: SpeakerSchema,
+  mdx: z.string().min(1),
+});
+
+export type Turn = z.infer<typeof TurnSchema>;
+
+/**
+ * Dialogue root
+ */
+export const DialogueSchema = z.object({
+  topic: z.string().min(1),
+  turns: z.array(TurnSchema).min(6).max(12),
+});
+
+export type Dialogue = z.infer<typeof DialogueSchema>;
 </file>
 
 <file path="src/components/MdxRenderer.tsx">
@@ -1299,38 +1388,6 @@ export function MdxRenderer({ content }: { content: string }) {
       </MarkdownHooks>
     </Box>
   );
-}
-</file>
-
-<file path="src/fixtures/dialogue.json">
-{
-  "topic": "Zero trust in microservices",
-  "turns": [
-    {
-      "speaker": "security_engineer",
-      "mdx": "We should adopt a strict zero-trust posture for east‑west traffic using workload identities (SPIFFE), mTLS between sidecars, and OPA for fine‑grained policy enforcement.\n\nKey points:\n\n- Authenticate by identity, not network: SPIFFE SVIDs issued by SPIRE; short‑lived X.509 (or JWT‑SVID) for revocation-free rotation.\n- Encrypt and authorize at the edge of the workload: Envoy/sidecar mTLS, Envoy RBAC + OPA as an external authorizer.\n- Deny‑by‑default RBAC and attribute‑based policies (OPA/Rego) for sensitive calls (database, secrets manager).\n- Rollout strategy: permissive mTLS -> canary (5–25%) -> all, and use chaos engineering to verify cert expiry recovery paths.\n\nConcrete failure cases to prepare for:\n\n- SPIRE control plane compromise: have offline root CA and automated rotation playbooks.\n- Certificate expiry or network partition: use permissive mode with strict audit for short windows and automatic restart/renewal agents.\n\nI expect pushback on complexity and latency; I’ll address trade‑offs if you outline those concerns."
-    },
-    {
-      "speaker": "application_engineer",
-      "mdx": "I agree with identity‑first goals, but I push back on mandatory sidecars + Envoy for every service because of operational and performance costs.\n\nProblems I see:\n\n- CPU and latency: Envoy sidecars add p99 tail latency and ~5–15% CPU overhead in polyglot fleets.\n- Integration friction: not every runtime team can embed SPIFFE SDKs; sidecars can be heavy for small services (FaaS/edge devices).\n- Centralized OPA policies become deployment coupling: a policy change can break many services and slow down releases.\n\nA pragmatic alternative I propose:\n\n- North‑south: API gateway enforces strong auth (JWT introspection, rate limiting, WAF). Use token caches and introspection caching.\n- East‑west hybrid: critical services use SPIFFE mTLS; noncritical internal calls use signed JWTs with short TTL + local verification.\n- Gradual rollout: start gateway + JWTs, then progressively onboard service mesh for high‑risk paths.\n\nI want to see concrete latency measurements and rollout knobs before committing cluster‑wide sidecars."
-    },
-    {
-      "speaker": "security_engineer",
-      "mdx": "Good points — latency and operational burden are real. Still, JWTs and gateway‑only enforcement have concrete attack windows:\n\n- Replay and revocation: long‑lived JWTs are hard to revoke; token introspection adds central dependency and latency spikes.\n- Gateway compromise: a single compromised ingress gateway could mint or forward tokens to east‑west paths if we rely on gateway trust alone.\n\nHow we mitigate while addressing your concerns:\n\n- Use SPIFFE short‑lived SVIDs (X.509 or JWT‑SVID). TTLs of 10–30 minutes eliminate long revocation windows and avoid introspection for every call.\n- Reduce sidecar overhead: leverage eBPF or kernel bypass (Envoy’s XDP/AF_XDP or gVisor bypass patterns) for hot paths; restrict full proxy to critical services.\n- Rollout concretely:\n  - Phase 1: deploy SPIRE server + agents on control plane nodes; run Envoy in permissive mode (mTLS verified but not required) for 2 weeks.\n  - Phase 2: canary 5% of services with enforced mTLS and OPA policies; monitor p99 auth latency, CPU delta, and error rate.\n  - Phase 3: expand by risk category.\n\nFailure/callback plan:\n\n- If SPIRE unavailable, agents continue serving cached SVIDs until expiry; set TTLs short but long enough to survive brief outages (e.g., 15m).\n- For wider outages, auto‑rollback to permissive with strict logging and alerts, not fail‑open permanently."
-    },
-    {
-      "speaker": "application_engineer",
-      "mdx": "Accepting JWT replay concerns and the SPIFFE short‑lived solution helps. Still, the devil is in operational details and developer velocity.\n\nOperational trade‑offs I want addressed before full adoption:\n\n- SDK vs sidecar: SDKs avoid heavy sidecars but create language‑specific maintenance across many teams. Sidecars centralize complexity but hurt resource budgets.\n- Observability/perf KPIs: we need concrete thresholds before canary expansion (acceptable p99 increase, CPU budget per pod, memory).\n- Policy ownership: OPA as a centralized policy store needs guardrails (policy review workflow, testing harnesses).\n\nProposed hybrid implementation to compromise:\n\n- Use SPIRE agents + sidecars for critical, high‑risk services (payments, auth, db proxies).\n- Use JWT‑SVID (SPIFFE supports JWT‑SVID) for lightweight validation in low‑risk services — apps validate locally with a stable public key bundle.\n- Deploy OPA as a local sidecar for low latency but keep a central OPA server for policy authorship and CI testing; use policy signing and automated promotion.\n\nAlso, we should create canary KPIs: start at 5% traffic, expand if p99 auth latency delta <2ms and CPU overhead <5%."
-    },
-    {
-      "speaker": "security_engineer",
-      "mdx": "I like the hybrid shape and it's consistent with SPIFFE capabilities. A few concrete mechanisms and operational controls I insist on:\n\n- Use JWT‑SVIDs where appropriate: SPIRE issues JWT‑SVIDs so apps can validate tokens offline using the trust bundle (no introspection). This addresses your SDK concern without sacrificing short TTLs.\n- Policy enforcement: use Envoy RBAC + OPA plugin for complex attribute logic; OPA Gatekeeper for K8s admission controls to stop misconfigurations.\n- Failover and TTL specifics:\n  - Certificate/SVID TTL: 10–30 minutes (trade‑off: shorter TTL reduces compromise window but increases issuance load).\n  - SPIRE HA: run SPIRE server as an HA set; monitor issuance latency and queue length; alert at issuance latency >500ms or queue >1000.\n- Rollback strategy: permissive mode with strict audit for a maximum window (e.g., 4 hours) and automated rollback if:\n  - p99 auth latency increases >2ms above baseline, or\n  - request error rate increases by >1% absolute, or\n  - CPU overhead >7% on canary pods.\n\nMinimal diagram of the flow:\n\n```mermaid\nflowchart LR\n  A[workload] -->|fetch SVID| B[SPIRE agent]\n  A -->|mTLS| C[sidecar Envoy]\n  C -->|policy check| D[OPA sidecar]\n  D --> E[target service]\n```\n\nI’ll own SPIRE outage playbooks and automated alerts if we agree on the KPI thresholds above."
-    },
-    {
-      "speaker": "application_engineer",
-      "mdx": "That diagram and the concrete thresholds make the plan actionable. I accept the hybrid architecture provided we lock down these operational SLAs and automation steps:\n\n- KPIs and rollout gates:\n  - Canary progression: 5% -> 25% -> 100% when p99 auth latency delta <= 2ms and CPU overhead <= 5%.\n  - If error rate increases >1% or auth failures >0.1% for 10 minutes, auto‑rollback to permissive for affected canaries.\n- Performance mitigations:\n  - Use eBPF for in‑kernel fast path where possible and an Envoy wasm filter for lightweight policy checks.\n  - Cache public bundles for JWT‑SVID validation, refresh off‑peak.\n- Responsibilities:\n  - Security owns SPIRE HA, TTL tuning, and automated rollback playbooks.\n  - Platform owns sidecar deployment patterns, eBPF integration, and a policy CI that validates Rego on test traffic.\n\nIf you commit to those duties and the canary gates, I’ll start a pilot with three critical services and measure metrics for two weeks before broader rollout."
-    }
-  ]
 }
 </file>
 
@@ -1393,50 +1450,6 @@ export function MdxRenderer({ content }: { content: string }) {
       }
     );
 }
-</file>
-
-<file path="shared/schemas.ts">
-// shared/schemas.ts
-import { z } from "zod";
-
-/**
- * Prompt Input
- */
-export const PromptRequestSchema = z.object({
-  prompt: z.string().min(1),
-});
-
-/**
- * Speakers
- */
-export const SpeakerSchema = z.enum([
-  "security_engineer",
-  "application_engineer",
-]);
-
-export type Speaker = z.infer<typeof SpeakerSchema>;
-
-/**
- * A single conversational turn.
- * mdx is markdown/MDX-ish content (we'll render as markdown).
- * Mermaid diagrams are expressed as ```mermaid code fences inside mdx.
- */
-export const TurnSchema = z.object({
-  speaker: SpeakerSchema,
-  mdx: z.string().min(1),
-});
-
-export type Turn = z.infer<typeof TurnSchema>;
-
-/**
- * Dialogue root
- */
-export const DialogueSchema = z.object({
-  topic: z.string().min(1),
-  turns: z.array(TurnSchema).min(6).max(12),
-});
-
-export type Dialogue = z.infer<typeof DialogueSchema>;
 </file>
 
 <file path="server.ts">
@@ -1585,6 +1598,7 @@ Bun.serve({
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
+    "@statelyai/inspect": "^0.4.0",
     "@types/bun": "latest",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -1636,9 +1650,9 @@ import { bus } from "./bus";
 
 const MotionBox = motion(Box);
 
-export function App() {
+export function App({ inspector }: { inspector?: any }) {
   const { prompt, setPrompt, loading, state, send, generate, replay } =
-    useDebate();
+    useDebate(inspector?.inspect);
 
   const blocks = useDebateProjection();
 
