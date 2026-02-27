@@ -9,6 +9,7 @@ import { useObserverAnchor } from "./hooks/useObserverAnchor";
 import { useGradientProjection } from "./hooks/useGradientProjection";
 import { useScrollOwnership } from "./hooks/useScrollOwnership";
 import { useAutoScroll } from "./hooks/useAutoScroll";
+import { useViewportHeight } from "./hooks/useViewportHeight";
 import { MdxRenderer } from "./components/MdxRenderer";
 import { bus } from "./bus";
 
@@ -19,28 +20,43 @@ export function App({ inspector }: { inspector?: any }) {
     useDebate(inspector?.inspect);
 
   const blocks = useDebateProjection();
-
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
-  // 1️⃣ Wait for layout (MDX + Mermaid) to stabilize
+  /* ------------------------------------------------------------
+     Layout Stabilization
+  ------------------------------------------------------------ */
+
   const { ready: layoutReady } = useLayoutStable(scrollRef, blocks);
 
-  // 2️⃣ Attach observer to bottom of content
   const { observerRef, observerMetrics } = useObserverAnchor(
     scrollRef,
     layoutReady,
   );
 
-  // 3️⃣ Project observer geometry into gradient intensity
   const { intensity } = useGradientProjection(observerMetrics, layoutReady);
 
-  // Extract scroll owner from state machine
+  /* ------------------------------------------------------------
+     Viewport Geometry
+  ------------------------------------------------------------ */
+
+  const viewportHeight = useViewportHeight(scrollRef);
+  const lastBlock = blocks[blocks.length - 1];
+  const lastHeight = lastBlock?.height ?? 0;
+
+  const spacerHeight = Math.max(
+    0,
+    Math.floor((viewportHeight - lastHeight) / 2),
+  );
+
+  /* ------------------------------------------------------------
+     Scroll Ownership
+  ------------------------------------------------------------ */
+
   const scrollOwner =
     typeof state.value === "object" && "scroll" in state.value
       ? state.value.scroll
       : "machineOwned";
 
-  // 4️⃣ Auto-scroll (returns restoringRef)
   const restoringRef = useAutoScroll(
     scrollRef,
     blocks.length,
@@ -48,7 +64,6 @@ export function App({ inspector }: { inspector?: any }) {
     layoutReady,
   );
 
-  // 5️⃣ Ownership (suppressed while restoring)
   useScrollOwnership(send, scrollRef, restoringRef);
 
   return (
@@ -102,9 +117,8 @@ export function App({ inspector }: { inspector?: any }) {
         </Button>
       </Box>
 
-      {/* Debate Stage Wrapper */}
+      {/* Debate Stage */}
       <Box flex="1" position="relative">
-        {/* Scroll Viewport */}
         <Box
           ref={scrollRef}
           position="absolute"
@@ -114,23 +128,28 @@ export function App({ inspector }: { inspector?: any }) {
           data-layout-ready={layoutReady ? "true" : "false"}
           data-scroll-owner={state.value.scroll}
         >
-          {/* Content Wrapper */}
-          <Box pt="160px" pb="160px">
+          <Box>
+            {/* Symmetric Top Spacer */}
+            <Box height={`${spacerHeight}px`} />
+
             {blocks.map((block, i) => (
               <TurnRow key={block.id} block={block} index={i} />
             ))}
 
-            {/* 2️⃣ Observer Anchor — must be last in content */}
+            {/* Observer Anchor */}
             <Box
               ref={observerRef}
               data-testid="observer-anchor"
               height="1px"
               width="100%"
             />
+
+            {/* Symmetric Bottom Spacer */}
+            <Box data-testid="bottom-spacer" height={`${spacerHeight}px`} />
           </Box>
         </Box>
 
-        {/* 3️⃣ Bottom Gradient — fixed to viewport bottom */}
+        {/* Bottom Gradient */}
         <Box
           pointerEvents="none"
           data-testid="background-gradient"
@@ -152,14 +171,17 @@ export function App({ inspector }: { inspector?: any }) {
   );
 }
 
+/* ------------------------------------------------------------
+   Turn Rendering
+------------------------------------------------------------ */
+
 function TurnRow({ block, index }: { block: any; index: number }) {
   return (
     <Box
       display="grid"
       gridTemplateColumns={{ base: "1fr", md: "1fr 1fr" }}
       px={{ base: "6vw", md: "8vw" }}
-      py="100px"
-      mt={index > 0 ? "-30px" : "0px"}
+      mt="0px"
       position="relative"
     >
       <Pane
@@ -223,8 +245,6 @@ function MeasuredBubble({
   React.useEffect(() => {
     if (!ref.current) return;
 
-    const el = ref.current;
-
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         bus.emit("TURN_RENDERED", {
@@ -234,41 +254,45 @@ function MeasuredBubble({
       }
     });
 
-    observer.observe(el);
+    observer.observe(ref.current);
     return () => observer.disconnect();
   }, [id]);
 
   const isSecurity = speaker === "security_engineer";
 
   return (
-    <MotionBox
-      data-testid="turn-bubble"
-      ref={ref}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-      width="70vw"
-      maxW="1100px"
-      fontSize="18px"
-      borderLeft={isSecurity ? "3px solid rgba(120,170,255,0.35)" : undefined}
-      borderRight={!isSecurity ? "3px solid rgba(255,180,120,0.35)" : undefined}
-      pl={isSecurity ? "28px" : undefined}
-      pr={!isSecurity ? "24px" : undefined}
-      display={!isSecurity ? "flex" : "block"}
-      flexDirection="column"
-      alignItems={!isSecurity ? "flex-end" : undefined}
-    >
-      <Text
-        fontSize="13px"
-        letterSpacing="0.08em"
-        textTransform="uppercase"
-        opacity="0.6"
-        mb="16px"
+    <Box>
+      <MotionBox
+        data-testid="turn-bubble"
+        ref={ref}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        width="70vw"
+        maxW="1100px"
+        fontSize="18px"
+        borderLeft={isSecurity ? "3px solid rgba(120,170,255,0.35)" : undefined}
+        borderRight={
+          !isSecurity ? "3px solid rgba(255,180,120,0.35)" : undefined
+        }
+        pl={isSecurity ? "28px" : undefined}
+        pr={!isSecurity ? "24px" : undefined}
+        display={!isSecurity ? "flex" : "block"}
+        flexDirection="column"
+        alignItems={!isSecurity ? "flex-end" : undefined}
       >
-        {isSecurity ? "Security Engineer" : "Application Engineer"}
-      </Text>
+        <Text
+          fontSize="13px"
+          letterSpacing="0.08em"
+          textTransform="uppercase"
+          opacity="0.6"
+          mb="16px"
+        >
+          {isSecurity ? "Security Engineer" : "Application Engineer"}
+        </Text>
 
-      <Box width="100%" textAlign="left">
-        <MdxRenderer content={content} />
-      </Box>
-    </MotionBox>
+        <Box width="100%" textAlign="left">
+          <MdxRenderer content={content} />
+        </Box>
+      </MotionBox>
+    </Box>
   );
 }

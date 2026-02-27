@@ -55,6 +55,8 @@ src/
     useLayoutStable.ts
     useObserverAnchor.ts
     useScrollOwnership.ts
+  types/
+    socratic-global.d.ts
   App.tsx
   bus.ts
   debateMachine.ts
@@ -80,179 +82,16 @@ vite.config.ts
 <files>
 This section contains the contents of the repository's files.
 
-<file path="src/hooks/useAutoScroll.ts">
-import { useLayoutEffect, useRef } from "react";
+<file path="src/types/socratic-global.d.ts">
+import type { SocraticBridge } from "../testBridge";
 
-export function useAutoScroll(
-  scrollRef: React.RefObject<HTMLDivElement | null>,
-  blocksLength: number,
-  scrollOwner: "machineOwned" | "userOwned",
-  layoutReady: boolean,
-) {
-  const prevLengthRef = useRef(blocksLength);
-  const pendingScrollRef = useRef(false);
-  const restoringRef = useRef(false);
-
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    if (blocksLength !== prevLengthRef.current) {
-      prevLengthRef.current = blocksLength;
-
-      if (scrollOwner === "machineOwned") {
-        pendingScrollRef.current = true;
-      }
-    }
-
-    if (layoutReady && pendingScrollRef.current) {
-      restoringRef.current = true;
-      el.scrollTop = el.scrollHeight;
-      el.dispatchEvent(new Event("scroll")); // ensure ownership recalculates
-
-      restoringRef.current = false;
-      pendingScrollRef.current = false;
-    }
-  }, [blocksLength, layoutReady, scrollOwner]);
-
-  return restoringRef;
+declare global {
+  interface Window {
+    __socratic?: SocraticBridge;
+  }
 }
-</file>
 
-<file path="src/hooks/useGradientProjection.ts">
-// src/hooks/useGradientProjection.ts
-import { useEffect, useState } from "react";
-import type { ObserverMetrics } from "./useObserverAnchor";
-
-export function useGradientProjection(
-  observerMetrics: ObserverMetrics | null,
-  layoutReady: boolean,
-  maxDistance: number = 400,
-) {
-  const [intensity, setIntensity] = useState(0);
-  const [normalizedPosition, setNormalizedPosition] = useState(0);
-
-  useEffect(() => {
-    if (!layoutReady || !observerMetrics) return;
-
-    const { midYInViewport, viewportHeight } = observerMetrics;
-
-    const distanceFromViewportBottom = viewportHeight - midYInViewport;
-
-    const normalized = Math.max(
-      0,
-      Math.min(distanceFromViewportBottom / maxDistance, 1),
-    );
-
-    // cubic ease-out
-    const eased = 1 - Math.pow(1 - normalized, 3);
-
-    setNormalizedPosition(normalized);
-    setIntensity(eased);
-  }, [observerMetrics, layoutReady, maxDistance]);
-
-  return { intensity, normalizedPosition };
-}
-</file>
-
-<file path="src/hooks/useLayoutStable.ts">
-// src/hooks/useLayoutStable.ts
-import { useEffect, useState } from "react";
-
-export function useLayoutStable(
-  scrollRef: React.RefObject<HTMLDivElement | null>,
-  blocks: unknown[],
-  settleMs: number = 150,
-) {
-  const [ready, setReady] = useState(false);
-  const [version, setVersion] = useState(0);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const content = el.firstElementChild as HTMLElement | null;
-    if (!content) return;
-
-    setReady(false);
-
-    let timeout: number | null = null;
-
-    const observer = new ResizeObserver(() => {
-      if (timeout) window.clearTimeout(timeout);
-
-      timeout = window.setTimeout(() => {
-        setReady(true);
-        setVersion((v) => v + 1);
-      }, settleMs);
-    });
-
-    observer.observe(content);
-
-    return () => {
-      observer.disconnect();
-      if (timeout) window.clearTimeout(timeout);
-    };
-  }, [scrollRef, blocks.length, settleMs]);
-
-  return { ready, version };
-}
-</file>
-
-<file path="src/hooks/useObserverAnchor.ts">
-// src/hooks/useObserverAnchor.ts
-import { useEffect, useRef, useState } from "react";
-
-export type ObserverMetrics = {
-  midYInViewport: number;
-  bottomInContent: number;
-  viewportHeight: number;
-};
-
-export function useObserverAnchor(
-  scrollRef: React.RefObject<HTMLDivElement | null>,
-  layoutReady: boolean,
-) {
-  const observerRef = useRef<HTMLDivElement | null>(null);
-  const [metrics, setMetrics] = useState<ObserverMetrics | null>(null);
-
-  useEffect(() => {
-    if (!layoutReady) return;
-
-    const scroller = scrollRef.current;
-    const observer = observerRef.current;
-
-    if (!scroller || !observer) return;
-
-    const update = () => {
-      const scrollerRect = scroller.getBoundingClientRect();
-      const observerRect = observer.getBoundingClientRect();
-
-      const midYInViewport = observerRect.top + observerRect.height / 2;
-
-      const bottomInContent = observer.offsetTop + observer.offsetHeight;
-
-      const viewportHeight = scroller.clientHeight;
-
-      setMetrics({
-        midYInViewport,
-        bottomInContent,
-        viewportHeight,
-      });
-    };
-
-    update();
-    scroller.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
-
-    return () => {
-      scroller.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-    };
-  }, [layoutReady, scrollRef]);
-
-  return { observerRef, observerMetrics: metrics };
-}
+export {};
 </file>
 
 <file path="src/bus.ts">
@@ -276,243 +115,11 @@ export type Events = {
 export const bus = mitt<Events>();
 </file>
 
-<file path="src/testBridge.ts">
-// src/testBridge.ts
-import { bus } from "./bus";
-
-export function installTestBridge() {
-  if (!import.meta.env.DEV && import.meta.env.MODE !== "test") return;
-
-  (window as any).__socratic = {
-    emit: (type: string, payload?: any) => bus.emit(type as any, payload),
-
-    machineEvents: [] as string[],
-
-    onMachineEvent(type: string) {
-      (window as any).__socratic.machineEvents.push(type);
-    },
-  };
-}
-</file>
-
 <file path="test-results/.last-run.json">
 {
   "status": "passed",
   "failedTests": []
 }
-</file>
-
-<file path="tests/scroll.spec.ts">
-import { test, expect } from "@playwright/test";
-import type { Page } from "@playwright/test";
-import type { Turn } from "../shared/schemas";
-
-function turn(i: number): Turn {
-  return {
-    speaker: i % 2 === 0 ? "security_engineer" : "application_engineer",
-    mdx: `Turn ${i}\n\n` + "word ".repeat(200),
-  };
-}
-
-async function appendTurns(page: Page, count: number) {
-  for (let i = 0; i < count; i++) {
-    await page.evaluate((payload: Turn) => {
-      (window as any).__socratic?.emit("APPEND_TURN", payload);
-    }, turn(i));
-  }
-}
-
-async function dumpScrollState(page: Page, label: string) {
-  const state = await page.evaluate(() => {
-    const el = document.querySelector(
-      "[data-testid='scroll-viewport']",
-    ) as HTMLElement;
-
-    return {
-      scrollTop: el.scrollTop,
-      clientHeight: el.clientHeight,
-      scrollHeight: el.scrollHeight,
-      atBottom: el.scrollTop + el.clientHeight >= el.scrollHeight - 5,
-      owner: el.getAttribute("data-scroll-owner"),
-    };
-  });
-
-  console.log(`\n[${label}]`, state);
-}
-
-async function manualScroll(page: Page, delta: number) {
-  await page.evaluate((amount) => {
-    const el = document.querySelector(
-      "[data-testid='scroll-viewport']",
-    ) as HTMLElement;
-
-    el.scrollTop += amount;
-    el.dispatchEvent(new Event("scroll"));
-  }, delta);
-}
-
-async function scrollToBottom(page: Page) {
-  await page.evaluate(() => {
-    const el = document.querySelector(
-      "[data-testid='scroll-viewport']",
-    ) as HTMLElement;
-
-    el.scrollTop = el.scrollHeight;
-    el.dispatchEvent(new Event("scroll"));
-  });
-}
-
-test.beforeEach(async ({ page }) => {
-  page.on("console", (msg) => {
-    console.log(`[browser:${msg.type()}]`, msg.text());
-  });
-});
-
-/* ------------------------------------------------------------
-   Fresh State
------------------------------------------------------------- */
-
-test("fresh load starts machineOwned", async ({ page }) => {
-  await page.goto("/");
-  await dumpScrollState(page, "fresh load");
-
-  const owner = await page
-    .getByTestId("scroll-viewport")
-    .getAttribute("data-scroll-owner");
-
-  expect(owner).toBe("machineOwned");
-});
-
-/* ------------------------------------------------------------
-   Auto-scroll behavior
------------------------------------------------------------- */
-
-test("machineOwned auto-scrolls on append", async ({ page }) => {
-  await page.goto("/");
-
-  await appendTurns(page, 8);
-
-  await expect
-    .poll(async () =>
-      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
-    )
-    .toBe("machineOwned");
-
-  await dumpScrollState(page, "after append");
-
-  await expect
-    .poll(async () =>
-      page.evaluate(() => {
-        const el = document.querySelector(
-          "[data-testid='scroll-viewport']",
-        ) as HTMLElement;
-        return el.scrollTop + el.clientHeight >= el.scrollHeight - 5;
-      }),
-    )
-    .toBeTruthy();
-
-  await dumpScrollState(page, "after auto-scroll settle");
-});
-
-test("machineOwned stays machineOwned when appending", async ({ page }) => {
-  await page.goto("/");
-
-  await appendTurns(page, 8);
-  await appendTurns(page, 1);
-
-  await dumpScrollState(page, "after second append");
-
-  const owner = await page
-    .getByTestId("scroll-viewport")
-    .getAttribute("data-scroll-owner");
-
-  expect(owner).toBe("machineOwned");
-});
-
-/* ------------------------------------------------------------
-   Manual Scroll Behavior
------------------------------------------------------------- */
-
-test("manual scroll up transitions to userOwned", async ({ page }) => {
-  await page.goto("/");
-
-  await appendTurns(page, 8);
-
-  // Ensure starting at bottom
-  await scrollToBottom(page);
-
-  await manualScroll(page, -600);
-
-  await dumpScrollState(page, "after manual scroll up");
-
-  await expect
-    .poll(async () =>
-      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
-    )
-    .toBe("userOwned");
-
-  await dumpScrollState(page, "after ownership transition");
-});
-
-test("userOwned remains userOwned when appending", async ({ page }) => {
-  await page.goto("/");
-
-  await appendTurns(page, 8);
-
-  await scrollToBottom(page);
-  await manualScroll(page, -600);
-
-  await expect
-    .poll(async () =>
-      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
-    )
-    .toBe("userOwned");
-
-  await appendTurns(page, 1);
-
-  await dumpScrollState(page, "after append while userOwned");
-
-  const owner = await page
-    .getByTestId("scroll-viewport")
-    .getAttribute("data-scroll-owner");
-
-  expect(owner).toBe("userOwned");
-});
-
-/* ------------------------------------------------------------
-   Returning to bottom
------------------------------------------------------------- */
-
-test("scrolling back to bottom transitions to machineOwned", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  await appendTurns(page, 8);
-
-  await scrollToBottom(page);
-  await manualScroll(page, -600);
-
-  await expect
-    .poll(async () =>
-      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
-    )
-    .toBe("userOwned");
-
-  await dumpScrollState(page, "after scroll up");
-
-  await scrollToBottom(page);
-
-  await dumpScrollState(page, "after scroll to bottom");
-
-  await expect
-    .poll(async () =>
-      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
-    )
-    .toBe("machineOwned");
-
-  await dumpScrollState(page, "final state");
-});
 </file>
 
 <file path=".gitignore">
@@ -593,31 +200,6 @@ export default defineConfig({
 });
 </file>
 
-<file path="tsconfig.json">
-{
-  "compilerOptions": {
-    "target": "ESNext",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "jsx": "react-jsx",
-
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "moduleDetection": "force",
-    "verbatimModuleSyntax": true,
-    "allowImportingTsExtensions": true,
-
-    "noEmit": true,
-
-    "strict": true,
-    "skipLibCheck": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true
-  },
-  "include": ["src", "shared", "server.ts"]
-}
-</file>
-
 <file path="vite.config.ts">
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
@@ -664,442 +246,437 @@ export default defineConfig({
 }
 </file>
 
-<file path="src/hooks/useDebate.ts">
-import { useState } from "react";
-import { useMachine } from "@xstate/react";
-import {
-  PromptRequestSchema,
-  DialogueSchema,
-  type Dialogue,
-} from "../../shared/schemas";
-import fixtureData from "../fixtures/dialogue.json";
-import { debateMachine } from "../debateMachine";
+<file path="src/hooks/useAutoScroll.ts">
+import { useLayoutEffect, useRef } from "react";
 
-const USE_STATIC_FIXTURE = true;
+/**
+ * useAutoScroll
+ *
+ * Responsibility:
+ * ----------------
+ * Perform automatic scroll-to-bottom behavior when:
+ *   - New content (blocks) is appended
+ *   - The state machine currently owns scrolling ("machineOwned")
+ *   - Layout has fully stabilized (MDX + Mermaid rendered, heights settled)
+ *
+ * Design Principles:
+ * ------------------
+ * 1. Never scroll before layout is stable.
+ * 2. Never scroll if the user owns scrolling.
+ * 3. Scroll exactly once per append event.
+ * 4. Suppress ownership recalculation while we are restoring scroll.
+ *
+ * This hook is intentionally imperative and uses refs instead of state
+ * because this is coordination logic, not UI state.
+ */
+export function useAutoScroll(
+  scrollRef: React.RefObject<HTMLDivElement | null>,
 
-export function useDebate(inspect?: any) {
-  const [prompt, setPrompt] = useState("Zero trust in microservices");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * The number of rendered blocks.
+   * When this increases, it means new content has been appended.
+   */
+  blocksLength: number,
 
-  const [state, send] = useMachine(debateMachine, {
-    inspect,
-  });
+  /**
+   * Current scroll ownership, derived from the XState machine.
+   * - "machineOwned" → auto-scroll allowed
+   * - "userOwned"    → do not interfere
+   */
+  scrollOwner: "machineOwned" | "userOwned",
 
-  async function generate() {
-    setLoading(true);
-    setError(null);
+  /**
+   * True only after layout has fully stabilized.
+   * Provided by useLayoutStable (ResizeObserver-based settling).
+   */
+  layoutReady: boolean,
+) {
+  /**
+   * Tracks the previous blocks length.
+   * Used to detect content growth (append events).
+   */
+  const prevLengthRef = useRef(blocksLength);
 
-    try {
-      let parsed: Dialogue;
+  /**
+   * A one-shot latch indicating:
+   *   "We owe the viewport a scroll-to-bottom once layout stabilizes."
+   *
+   * Why needed:
+   * - New content may append before layoutReady becomes true.
+   * - We must remember that a scroll is required.
+   * - We must perform it exactly once.
+   *
+   * This is not UI state — it is internal coordination memory.
+   */
+  const pendingScrollRef = useRef(false);
 
-      if (USE_STATIC_FIXTURE) {
-        parsed = DialogueSchema.parse(fixtureData);
-      } else {
-        const body = PromptRequestSchema.parse({ prompt });
+  /**
+   * Indicates that we are currently performing a machine-driven
+   * scroll restoration.
+   *
+   * This is consumed by useScrollOwnership to avoid misinterpreting
+   * our own programmatic scroll as a user scroll.
+   */
+  const restoringRef = useRef(false);
 
-        const resp = await fetch("/api/dialogue", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        });
+  /**
+   * useLayoutEffect is used instead of useEffect because:
+   * - We want scroll mutation to occur before the browser paints.
+   * - This prevents visible flicker or mid-frame repositioning.
+   */
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
 
-        if (!resp.ok) throw new Error(await resp.text());
+    /* ------------------------------------------------------------
+       Phase 1 — Detect Content Growth
+    ------------------------------------------------------------ */
 
-        parsed = DialogueSchema.parse(await resp.json());
+    // If blocksLength changed, new content was appended.
+    if (blocksLength !== prevLengthRef.current) {
+      prevLengthRef.current = blocksLength;
+
+      // Only schedule auto-scroll if machine owns scrolling.
+      // If user owns scroll, we intentionally do nothing.
+      if (scrollOwner === "machineOwned") {
+        pendingScrollRef.current = true;
       }
-
-      send({ type: "GENERATE", dialogue: parsed });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
     }
-  }
 
-  function replay() {
-    send({ type: "REPLAY" });
-  }
+    /* ------------------------------------------------------------
+       Phase 2 — Execute Deferred Scroll (Once Layout Is Stable)
+    ------------------------------------------------------------ */
 
-  return {
-    prompt,
-    setPrompt,
-    loading,
-    error,
-    send,
-    state,
-    generate,
-    replay,
-  };
+    // Only scroll when:
+    // - layout has settled (heights finalized)
+    // - we previously recorded intent to scroll
+    if (layoutReady && pendingScrollRef.current) {
+      // Mark that this scroll is programmatic.
+      restoringRef.current = true;
+
+      // Jump to bottom.
+      // We use scrollHeight to ensure exact bottom alignment.
+      el.scrollTop = el.scrollHeight;
+
+      // Manually dispatch scroll so ownership logic recalculates.
+      // Without this, useScrollOwnership may not re-evaluate.
+      el.dispatchEvent(new Event("scroll"));
+
+      // Reset flags.
+      restoringRef.current = false;
+      pendingScrollRef.current = false;
+    }
+  }, [blocksLength, layoutReady, scrollOwner]);
+
+  /**
+   * We return restoringRef so useScrollOwnership can suppress
+   * machine-driven scroll events.
+   *
+   * This is an intentional cross-hook coordination channel.
+   */
+  return restoringRef;
 }
 </file>
 
-<file path="src/hooks/useDebateProjection.ts">
+<file path="src/hooks/useGradientProjection.ts">
 import { useEffect, useState } from "react";
-import type { Turn } from "../../shared/schemas";
-import { bus } from "../bus";
+import type { ObserverMetrics } from "./useObserverAnchor";
 
-export type LayoutBlock = Turn & {
-  id: string;
-  height?: number;
-};
+/**
+ * useGradientProjection
+ *
+ * Responsibility:
+ * Convert geometry telemetry (anchor position)
+ * into a normalized visual intensity signal.
+ *
+ * This hook does not read DOM.
+ * It purely transforms metrics → presentation value.
+ */
+export function useGradientProjection(
+  observerMetrics: ObserverMetrics | null,
+  layoutReady: boolean,
+  maxDistance: number = 400,
+) {
+  // Final eased intensity used by UI
+  const [intensity, setIntensity] = useState(0);
 
-export function useDebateProjection() {
-  const [blocks, setBlocks] = useState<LayoutBlock[]>([]);
+  // Raw 0–1 normalized distance before easing
+  const [normalizedPosition, setNormalizedPosition] = useState(0);
 
   useEffect(() => {
-    function onStart() {
-      setBlocks([]);
-    }
+    // Do nothing until layout is stable and we have metrics
+    if (!layoutReady || !observerMetrics) return;
 
-    function onAppend(turn: Turn) {
-      setBlocks((prev) => [
-        ...prev,
-        {
-          ...turn,
-          id: crypto.randomUUID(),
-        },
-      ]);
-    }
+    const { midYInViewport, viewportHeight } = observerMetrics;
 
-    function onRendered({ id, height }: { id: string; height: number }) {
-      setBlocks((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, height } : b)),
-      );
-    }
+    /**
+     * Distance between anchor midpoint and viewport bottom.
+     * When anchor approaches bottom, gradient intensity increases.
+     */
+    const distanceFromViewportBottom = viewportHeight - midYInViewport;
 
-    bus.on("REPLAY_START", onStart);
-    bus.on("APPEND_TURN", onAppend);
-    bus.on("TURN_RENDERED", onRendered);
+    /**
+     * Normalize distance into 0–1 range.
+     * Clamped to avoid overflow.
+     */
+    const normalized = Math.max(
+      0,
+      Math.min(distanceFromViewportBottom / maxDistance, 1),
+    );
 
-    return () => {
-      bus.off("REPLAY_START", onStart);
-      bus.off("APPEND_TURN", onAppend);
-      bus.off("TURN_RENDERED", onRendered);
-    };
-  }, []);
+    /**
+     * Apply cubic ease-out for smoother visual falloff.
+     * Keeps interaction feeling soft instead of linear.
+     */
+    const eased = 1 - Math.pow(1 - normalized, 3);
 
-  return blocks;
+    setNormalizedPosition(normalized);
+    setIntensity(eased);
+  }, [observerMetrics, layoutReady, maxDistance]);
+
+  return { intensity, normalizedPosition };
 }
 </file>
 
-<file path="src/hooks/useScrollOwnership.ts">
-import { useEffect, useRef } from "react";
-import type { AnyActorRef } from "xstate";
+<file path="src/hooks/useLayoutStable.ts">
+import { useEffect, useState } from "react";
 
-export function useScrollOwnership(
-  send: AnyActorRef["send"],
+/**
+ * useLayoutStable
+ *
+ * Responsibility:
+ * Detect when scroll content has stopped resizing for a short window.
+ *
+ * This is necessary because:
+ * - MDX rendering
+ * - Mermaid diagrams
+ * - dynamic height measurement
+ *
+ * all cause asynchronous layout changes.
+ *
+ * We mark layout as "ready" only after no ResizeObserver events
+ * fire for `settleMs` milliseconds.
+ */
+export function useLayoutStable(
   scrollRef: React.RefObject<HTMLDivElement | null>,
-  restoringRef: React.MutableRefObject<boolean>,
+  blocks: unknown[],
+  settleMs: number = 150,
 ) {
-  const lastAtBottomRef = useRef<boolean | null>(null);
-  const lastScrollTopRef = useRef<number>(0);
+  // True once layout has fully settled
+  const [ready, setReady] = useState(false);
+
+  // Incremented whenever layout re-stabilizes
+  // Useful if consumers want to react to new stable cycles
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
-    const checkOwnership = () => {
-      const currentScrollTop = el.scrollTop;
-      const atBottom =
-        currentScrollTop + el.clientHeight >= el.scrollHeight - 5;
+    // We observe the first child (content wrapper)
+    const content = el.firstElementChild as HTMLElement | null;
+    if (!content) return;
 
-      const scrollingUp = currentScrollTop < lastScrollTopRef.current;
-      const scrollingDown = currentScrollTop > lastScrollTopRef.current;
+    // Whenever blocks change, layout is considered unstable again
+    setReady(false);
 
-      console.log("[ownership check]", {
-        scrollTop: currentScrollTop,
-        clientHeight: el.clientHeight,
-        scrollHeight: el.scrollHeight,
-        atBottom,
-        restoring: restoringRef.current,
-        lastAtBottom: lastAtBottomRef.current,
-        scrollingUp,
-        scrollingDown,
-      });
+    let timeout: number | null = null;
 
-      // Update scrollTop tracker immediately
-      lastScrollTopRef.current = currentScrollTop;
+    const observer = new ResizeObserver(() => {
+      // Reset debounce window on every resize
+      if (timeout) window.clearTimeout(timeout);
 
-      // Ignore machine-driven scroll restoration
-      if (restoringRef.current) return;
+      timeout = window.setTimeout(() => {
+        // Layout has been stable for settleMs
+        setReady(true);
+        setVersion((v) => v + 1);
+      }, settleMs);
+    });
 
-      // If user actively scrolled upward and we are no longer at bottom
-      if (!atBottom && scrollingUp) {
-        if (lastAtBottomRef.current !== false) {
-          lastAtBottomRef.current = false;
-          send({ type: "USER_SCROLLED_UP" });
-        }
-        return;
-      }
-
-      // If we reached bottom (either via user scroll down or auto-scroll)
-      if (atBottom) {
-        if (lastAtBottomRef.current !== true) {
-          lastAtBottomRef.current = true;
-          send({ type: "USER_AT_BOTTOM" });
-        }
-      }
-    };
-
-    el.addEventListener("scroll", checkOwnership, { passive: true });
-
-    // Initialize tracking state
-    lastScrollTopRef.current = el.scrollTop;
-    lastAtBottomRef.current =
-      el.scrollTop + el.clientHeight >= el.scrollHeight - 5;
-
-    checkOwnership();
+    observer.observe(content);
 
     return () => {
-      el.removeEventListener("scroll", checkOwnership);
+      observer.disconnect();
+      if (timeout) window.clearTimeout(timeout);
     };
-  }, [send, scrollRef, restoringRef]);
+  }, [scrollRef, blocks.length, settleMs]);
+
+  return { ready, version };
 }
 </file>
 
-<file path="src/debateMachine.ts">
-// src/machines/debateMachine.ts
-import { setup, assign, fromPromise } from "xstate";
-import type { Dialogue } from "../shared/schemas";
-import { replayDialogue } from "./replay";
+<file path="src/hooks/useObserverAnchor.ts">
+import { useEffect, useRef, useState } from "react";
 
-/* ------------------------------------------------------------
-   Utilities
------------------------------------------------------------- */
+/**
+ * ObserverMetrics
+ *
+ * These are geometry values derived from the DOM.
+ * They are intentionally minimal — just enough to drive projection logic
+ * (e.g., gradient intensity) without leaking full layout complexity.
+ */
+export type ObserverMetrics = {
+  /**
+   * The vertical midpoint of the anchor element,
+   * expressed in viewport coordinates (relative to the window).
+   *
+   * Used to determine how close the anchor is to the bottom
+   * of the visible scroll region.
+   */
+  midYInViewport: number;
 
-function now() {
-  return typeof performance !== "undefined"
-    ? performance.now().toFixed(2)
-    : Date.now();
+  /**
+   * The bottom of the anchor element,
+   * expressed in content coordinates (relative to the scroll container).
+   *
+   * This is useful if we ever want to reason about
+   * content-relative positioning instead of viewport-relative.
+   */
+  bottomInContent: number;
+
+  /**
+   * The visible height of the scroll viewport.
+   * Used to normalize distance calculations.
+   */
+  viewportHeight: number;
+};
+
+/**
+ * useObserverAnchor
+ *
+ * Responsibility:
+ * ----------------
+ * Attach a physical "anchor" element to the bottom of the scroll content
+ * and continuously measure its spatial relationship to the viewport.
+ *
+ * This hook does NOT make decisions.
+ * It only measures geometry and exposes it.
+ *
+ * Design Principles:
+ * ------------------
+ * 1. Only activate after layout has stabilized.
+ * 2. Avoid leaking DOM complexity to consumers.
+ * 3. Keep geometry calculations centralized and minimal.
+ * 4. React to both scroll and window resize.
+ */
+export function useObserverAnchor(
+  /**
+   * Ref to the scrollable viewport container.
+   */
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+
+  /**
+   * True only after layout (MDX, Mermaid, content height)
+   * has fully stabilized.
+   *
+   * We do not measure geometry before layout is ready,
+   * because early reads would be incorrect and noisy.
+   */
+  layoutReady: boolean,
+) {
+  /**
+   * Ref to the invisible anchor element.
+   *
+   * This element is placed at the bottom of the content
+   * and acts as a physical probe.
+   */
+  const observerRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * The latest computed geometry metrics.
+   * Null until first measurement occurs.
+   */
+  const [metrics, setMetrics] = useState<ObserverMetrics | null>(null);
+
+  useEffect(() => {
+    /**
+     * Do nothing until layout is stable.
+     * Prevents reading incomplete DOM geometry.
+     */
+    if (!layoutReady) return;
+
+    const scroller = scrollRef.current;
+    const observer = observerRef.current;
+
+    if (!scroller || !observer) return;
+
+    /**
+     * update()
+     *
+     * Reads live DOM geometry and projects it into
+     * a minimal, normalized metric shape.
+     *
+     * This is intentionally the ONLY place that
+     * DOM layout reads occur for this concern.
+     */
+    const update = () => {
+      /**
+       * getBoundingClientRect gives viewport-relative coordinates.
+       */
+      const scrollerRect = scroller.getBoundingClientRect();
+      const observerRect = observer.getBoundingClientRect();
+
+      /**
+       * Midpoint of the anchor in viewport space.
+       *
+       * We use midpoint instead of top/bottom directly
+       * to create smoother projection behavior.
+       */
+      const midYInViewport = observerRect.top + observerRect.height / 2;
+
+      /**
+       * Bottom of anchor in content space.
+       *
+       * offsetTop is relative to offsetParent,
+       * which here corresponds to the scroll content wrapper.
+       */
+      const bottomInContent = observer.offsetTop + observer.offsetHeight;
+
+      /**
+       * Visible height of scroll viewport.
+       */
+      const viewportHeight = scroller.clientHeight;
+
+      setMetrics({
+        midYInViewport,
+        bottomInContent,
+        viewportHeight,
+      });
+    };
+
+    /**
+     * Initial measurement.
+     */
+    update();
+
+    /**
+     * Listen to scroll events.
+     * Passive because we do not preventDefault.
+     */
+    scroller.addEventListener("scroll", update, { passive: true });
+
+    /**
+     * Also listen to window resize,
+     * since viewport height changes affect projections.
+     */
+    window.addEventListener("resize", update);
+
+    return () => {
+      scroller.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [layoutReady, scrollRef]);
+
+  /**
+   * Return:
+   * - observerRef → attach to bottom anchor element
+   * - observerMetrics → continuously updated geometry signal
+   *
+   * Consumers (like gradient projection) should treat
+   * this as read-only physical telemetry.
+   */
+  return { observerRef, observerMetrics: metrics };
 }
-
-function emitTestEvent(type: string, payload?: any) {
-  if (typeof window !== "undefined") {
-    const w = window as any;
-    if (w.__socratic?.onMachineEvent) {
-      w.__socratic.onMachineEvent({ type, payload });
-    }
-  }
-}
-
-function deepClone<T>(v: T): T {
-  return JSON.parse(JSON.stringify(v));
-}
-
-/* ------------------------------------------------------------
-   Machine
------------------------------------------------------------- */
-
-export const debateMachine = setup({
-  types: {
-    context: {} as {
-      dialogue: Dialogue | null;
-      error: string | null;
-    },
-    events: {} as
-      | { type: "GENERATE"; dialogue: Dialogue }
-      | { type: "REPLAY" }
-      | { type: "USER_SCROLLED_UP" }
-      | { type: "USER_AT_BOTTOM" }
-      | { type: "FAIL"; error: string },
-  },
-
-  /* ------------------------------------------------------------
-     Global Instrumentation
-  ------------------------------------------------------------ */
-
-  actions: {
-    logTransition: ({ context, event, self }) => {
-      const snapshot = self.getSnapshot();
-
-      const lifecycleState =
-        typeof snapshot.value === "object" && "lifecycle" in snapshot.value
-          ? snapshot.value.lifecycle
-          : snapshot.value;
-
-      const scrollState =
-        typeof snapshot.value === "object" && "scroll" in snapshot.value
-          ? snapshot.value.scroll
-          : null;
-
-      const logPayload = {
-        t: now(),
-        event: event.type,
-        lifecycle: lifecycleState,
-        scroll: scrollState,
-        context: deepClone(context),
-      };
-
-      console.log("[machine transition]", logPayload);
-      emitTestEvent("TRANSITION", logPayload);
-    },
-
-    logUserAtBottom: ({ context }) => {
-      const payload = {
-        t: now(),
-        type: "USER_AT_BOTTOM",
-        context: deepClone(context),
-      };
-      console.log("[machine] USER_AT_BOTTOM", payload);
-      emitTestEvent("USER_AT_BOTTOM", payload);
-    },
-
-    logUserScrolledUp: ({ context }) => {
-      const payload = {
-        t: now(),
-        type: "USER_SCROLLED_UP",
-        context: deepClone(context),
-      };
-      console.log("[machine] USER_SCROLLED_UP", payload);
-      emitTestEvent("USER_SCROLLED_UP", payload);
-    },
-  },
-
-  actors: {
-    replayActor: fromPromise(
-      async ({ input }: { input: { dialogue: Dialogue } }) => {
-        console.log("[machine] replayActor invoked", {
-          t: now(),
-          turns: input.dialogue.turns.length,
-        });
-
-        await replayDialogue(input.dialogue);
-
-        console.log("[machine] replayActor completed", {
-          t: now(),
-        });
-      },
-    ),
-  },
-}).createMachine({
-  id: "debate",
-  type: "parallel",
-
-  context: {
-    dialogue: null,
-    error: null,
-  },
-
-  states: {
-    lifecycle: {
-      initial: "idle",
-
-      states: {
-        idle: {
-          entry: "logTransition",
-
-          on: {
-            GENERATE: {
-              target: "ready",
-              actions: [
-                assign({
-                  dialogue: ({ event }) => event.dialogue,
-                  error: () => null,
-                }),
-                "logTransition",
-              ],
-            },
-          },
-        },
-
-        ready: {
-          entry: "logTransition",
-
-          on: {
-            REPLAY: {
-              target: "replaying",
-              actions: "logTransition",
-            },
-          },
-        },
-
-        replaying: {
-          entry: "logTransition",
-
-          invoke: {
-            src: "replayActor",
-            input: ({ context }) => {
-              if (!context.dialogue) {
-                throw new Error("No dialogue available");
-              }
-              return { dialogue: context.dialogue };
-            },
-            onDone: {
-              target: "complete",
-              actions: "logTransition",
-            },
-            onError: {
-              target: "error",
-              actions: [
-                assign({
-                  error: ({ event }) => String(event.error),
-                }),
-                "logTransition",
-              ],
-            },
-          },
-        },
-
-        complete: {
-          entry: "logTransition",
-
-          on: {
-            REPLAY: {
-              target: "replaying",
-              actions: "logTransition",
-            },
-          },
-        },
-
-        error: {
-          entry: "logTransition",
-
-          on: {
-            GENERATE: {
-              target: "ready",
-              actions: [
-                assign({
-                  dialogue: ({ event }) => event.dialogue,
-                  error: () => null,
-                }),
-                "logTransition",
-              ],
-            },
-          },
-        },
-      },
-    },
-
-    scroll: {
-      initial: "machineOwned",
-
-      states: {
-        machineOwned: {
-          entry: "logTransition",
-
-          on: {
-            USER_SCROLLED_UP: {
-              target: "userOwned",
-              actions: ["logUserScrolledUp", "logTransition"],
-            },
-          },
-        },
-
-        userOwned: {
-          entry: "logTransition",
-
-          on: {
-            USER_AT_BOTTOM: {
-              target: "machineOwned",
-              actions: ["logUserAtBottom", "logTransition"],
-            },
-          },
-        },
-      },
-    },
-  },
-});
 </file>
 
 <file path="src/main.tsx">
@@ -1160,6 +737,71 @@ export async function replayDialogue(dialogue: Dialogue) {
   }
 
   bus.emit("REPLAY_COMPLETE");
+}
+</file>
+
+<file path="src/testBridge.ts">
+// src/testBridge.ts
+import { bus } from "./bus";
+
+/* ------------------------------------------------------------
+   Machine Log Shape
+------------------------------------------------------------ */
+
+export type MachineLogEvent = {
+  t: number;
+  phase: "event" | "transition";
+  event?: string;
+  value: unknown;
+  context: unknown;
+};
+
+/* ------------------------------------------------------------
+   Bridge Interface
+------------------------------------------------------------ */
+
+export interface SocraticBridge {
+  emit: (type: string, payload?: unknown) => void;
+  machineEvents: MachineLogEvent[];
+  onMachineEvent: (payload: MachineLogEvent) => void;
+  clearMachineEvents: () => void;
+}
+
+/* ------------------------------------------------------------
+   Global Window Augmentation
+------------------------------------------------------------ */
+
+declare global {
+  interface Window {
+    __socratic?: SocraticBridge;
+  }
+}
+
+/* ------------------------------------------------------------
+   Install Bridge
+------------------------------------------------------------ */
+
+export function installTestBridge() {
+  // Only install in dev or test mode
+  if (!import.meta.env.DEV && import.meta.env.MODE !== "test") return;
+
+  const bridge: SocraticBridge = {
+    emit: (type, payload) => {
+      bus.emit(type as any, payload);
+    },
+
+    machineEvents: [],
+
+    onMachineEvent(payload) {
+      bridge.machineEvents.push(payload);
+    },
+
+    clearMachineEvents() {
+      bridge.machineEvents.length = 0;
+    },
+  };
+
+  window.__socratic = bridge;
 }
 </file>
 
@@ -1301,6 +943,31 @@ export async function replayDialogue(dialogue: Dialogue) {
 }
 </file>
 
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+
+    "noEmit": true,
+
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts"]
+}
+</file>
+
 <file path="shared/schemas.ts">
 // shared/schemas.ts
 import { z } from "zod";
@@ -1389,6 +1056,786 @@ export function MdxRenderer({ content }: { content: string }) {
     </Box>
   );
 }
+</file>
+
+<file path="src/hooks/useDebate.ts">
+import { useState, useEffect, useMemo } from "react";
+import { useMachine } from "@xstate/react";
+import {
+  PromptRequestSchema,
+  DialogueSchema,
+  type Dialogue,
+} from "../../shared/schemas";
+import fixtureData from "../fixtures/dialogue.json";
+import { debateMachine } from "../debateMachine";
+
+const USE_STATIC_FIXTURE = true;
+
+export function useDebate(inspect?: any) {
+  const [prompt, setPrompt] = useState("Zero trust in microservices");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // actor is the authoritative runtime instance
+  const [state, originalSend, actor] = useMachine(debateMachine, {
+    inspect,
+  });
+
+  /* ------------------------------------------------------------
+     Pre-Transition Logging (Event Boundary)
+  ------------------------------------------------------------ */
+
+  // Wrap send so we log every event entering the machine
+  const send = useMemo(() => {
+    return (event: Parameters<typeof originalSend>[0]) => {
+      const before = actor.getSnapshot();
+
+      const payload = {
+        t: performance.now(),
+        phase: "event",
+        event: event.type,
+        value: before.value,
+        context: before.context,
+      };
+
+      console.log("[machine event]", payload);
+
+      if (typeof window !== "undefined") {
+        const w = window as any;
+        w.__socratic?.onMachineEvent?.(payload);
+      }
+
+      originalSend(event);
+    };
+  }, [originalSend, actor]);
+
+  /* ------------------------------------------------------------
+     Post-Transition Logging (State Boundary)
+  ------------------------------------------------------------ */
+
+  useEffect(() => {
+    if (!actor) return;
+
+    const sub = actor.subscribe((snapshot) => {
+      const payload = {
+        t: performance.now(),
+        phase: "transition",
+        value: snapshot.value,
+        context: snapshot.context,
+      };
+
+      console.log("[machine transition]", payload);
+
+      if (typeof window !== "undefined") {
+        const w = window as any;
+        w.__socratic?.onMachineEvent?.(payload);
+      }
+    });
+
+    return () => sub.unsubscribe();
+  }, [actor]);
+
+  /* ------------------------------------------------------------
+     Domain Commands
+  ------------------------------------------------------------ */
+
+  async function generate() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      let parsed: Dialogue;
+
+      if (USE_STATIC_FIXTURE) {
+        parsed = DialogueSchema.parse(fixtureData);
+      } else {
+        const body = PromptRequestSchema.parse({ prompt });
+
+        const resp = await fetch("/api/dialogue", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        if (!resp.ok) throw new Error(await resp.text());
+
+        parsed = DialogueSchema.parse(await resp.json());
+      }
+
+      send({ type: "GENERATE", dialogue: parsed });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function replay() {
+    send({ type: "REPLAY" });
+  }
+
+  return {
+    prompt,
+    setPrompt,
+    loading,
+    error,
+    send, // wrapped send (instrumented)
+    state,
+    generate,
+    replay,
+  };
+}
+</file>
+
+<file path="src/hooks/useDebateProjection.ts">
+import { useEffect, useState } from "react";
+import type { Turn } from "../../shared/schemas";
+import { bus } from "../bus";
+
+/**
+ * LayoutBlock
+ *
+ * UI-projected representation of a Turn.
+ * Adds:
+ * - stable unique id
+ * - measured height (for mirrored panes)
+ */
+export type LayoutBlock = Turn & {
+  id: string;
+  height?: number;
+};
+
+/**
+ * useDebateProjection
+ *
+ * Responsibility:
+ * Project domain events (via bus) into renderable UI blocks.
+ *
+ * This is an event → view-model adapter.
+ * It keeps UI concerns (ids, measured height)
+ * separate from the state machine.
+ */
+export function useDebateProjection() {
+  const [blocks, setBlocks] = useState<LayoutBlock[]>([]);
+
+  useEffect(() => {
+    // Clear projection on replay start
+    function onStart() {
+      setBlocks([]);
+    }
+
+    // Append new turn to projection
+    function onAppend(turn: Turn) {
+      setBlocks((prev) => [
+        ...prev,
+        {
+          ...turn,
+          id: crypto.randomUUID(), // stable render key
+        },
+      ]);
+    }
+
+    // Update measured height once bubble renders
+    function onRendered({ id, height }: { id: string; height: number }) {
+      setBlocks((prev) =>
+        prev.map((b) => (b.id === id ? { ...b, height } : b)),
+      );
+    }
+
+    bus.on("REPLAY_START", onStart);
+    bus.on("APPEND_TURN", onAppend);
+    bus.on("TURN_RENDERED", onRendered);
+
+    return () => {
+      bus.off("REPLAY_START", onStart);
+      bus.off("APPEND_TURN", onAppend);
+      bus.off("TURN_RENDERED", onRendered);
+    };
+  }, []);
+
+  return blocks;
+}
+</file>
+
+<file path="src/hooks/useScrollOwnership.ts">
+import { useEffect, useRef } from "react";
+import type { AnyActorRef } from "xstate";
+
+/**
+ * useScrollOwnership
+ *
+ * Responsibility:
+ * ----------------
+ * Detect whether the user or the machine currently "owns" scroll.
+ *
+ * This hook translates raw DOM scroll movement into semantic events
+ * for the XState machine:
+ *
+ *   - USER_SCROLLED_UP  → transition to userOwned
+ *   - USER_AT_BOTTOM    → transition to machineOwned
+ *
+ * Design Goals:
+ * -------------
+ * 1. Only emit ownership transitions when they truly change.
+ * 2. Never treat machine-driven scroll restoration as user input.
+ * 3. Be resilient to small pixel drift.
+ * 4. Avoid event spam.
+ *
+ * This is the arbitration layer between:
+ *   - Physical scroll movement
+ *   - Semantic ownership state
+ */
+export function useScrollOwnership(
+  /**
+   * XState send function.
+   * We emit semantic ownership events into the machine.
+   */
+  send: AnyActorRef["send"],
+
+  /**
+   * Ref to the scrollable viewport.
+   */
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+
+  /**
+   * Shared ref from useAutoScroll.
+   * When true, we are currently restoring scroll programmatically.
+   * During restoration, ownership logic must be suppressed.
+   */
+  restoringRef: React.MutableRefObject<boolean>,
+) {
+  /**
+   * Tracks whether we previously considered ourselves at bottom.
+   * Used to prevent emitting duplicate machine events.
+   */
+  const lastAtBottomRef = useRef<boolean | null>(null);
+
+  /**
+   * Tracks the previous scrollTop value.
+   * Used to determine scroll direction (up vs down).
+   */
+  const lastScrollTopRef = useRef<number>(0);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    /**
+     * checkOwnership
+     *
+     * Called on every scroll event.
+     * Converts raw scroll metrics into semantic ownership signals.
+     */
+    const checkOwnership = () => {
+      const currentScrollTop = el.scrollTop;
+
+      /**
+       * Are we effectively at bottom?
+       *
+       * We allow a 5px tolerance to prevent flicker due to
+       * rounding errors or fractional layout differences.
+       */
+      const atBottom =
+        currentScrollTop + el.clientHeight >= el.scrollHeight - 5;
+
+      /**
+       * Determine scroll direction.
+       * This helps distinguish intentional upward scroll
+       * from incidental position drift.
+       */
+      const scrollingUp = currentScrollTop < lastScrollTopRef.current;
+      const scrollingDown = currentScrollTop > lastScrollTopRef.current;
+
+      console.log("[ownership check]", {
+        scrollTop: currentScrollTop,
+        clientHeight: el.clientHeight,
+        scrollHeight: el.scrollHeight,
+        atBottom,
+        restoring: restoringRef.current,
+        lastAtBottom: lastAtBottomRef.current,
+        scrollingUp,
+        scrollingDown,
+      });
+
+      /**
+       * Update scroll tracker immediately.
+       * This ensures future direction comparisons are accurate.
+       */
+      lastScrollTopRef.current = currentScrollTop;
+
+      /**
+       * Suppress ownership logic during machine-driven restoration.
+       *
+       * Without this, a programmatic scroll-to-bottom
+       * would be interpreted as user scroll,
+       * causing oscillation between states.
+       */
+      if (restoringRef.current) return;
+
+      /* ------------------------------------------------------------
+         Case 1: User scrolls upward and is no longer at bottom
+      ------------------------------------------------------------ */
+
+      if (!atBottom && scrollingUp) {
+        /**
+         * Only emit transition if ownership is actually changing.
+         * Prevents duplicate USER_SCROLLED_UP events.
+         */
+        if (lastAtBottomRef.current !== false) {
+          lastAtBottomRef.current = false;
+
+          // Semantic transition: machine → user ownership
+          send({ type: "USER_SCROLLED_UP" });
+        }
+        return;
+      }
+
+      /* ------------------------------------------------------------
+         Case 2: Scroll position reaches bottom
+      ------------------------------------------------------------ */
+
+      if (atBottom) {
+        /**
+         * Only emit transition if ownership is changing.
+         */
+        if (lastAtBottomRef.current !== true) {
+          lastAtBottomRef.current = true;
+
+          // Semantic transition: user → machine ownership
+          send({ type: "USER_AT_BOTTOM" });
+        }
+      }
+
+      /**
+       * Note:
+       * We intentionally do nothing for:
+       *   - scrollingDown but not yet at bottom
+       *   - small drift while still at bottom
+       *
+       * Ownership only changes on meaningful boundary crossings.
+       */
+    };
+
+    /**
+     * Passive listener because we do not preventDefault
+     * and we want scroll performance preserved.
+     */
+    el.addEventListener("scroll", checkOwnership, { passive: true });
+
+    /* ------------------------------------------------------------
+       Initialize baseline state
+    ------------------------------------------------------------ */
+
+    lastScrollTopRef.current = el.scrollTop;
+    lastAtBottomRef.current =
+      el.scrollTop + el.clientHeight >= el.scrollHeight - 5;
+
+    // Run once to align machine with initial position.
+    checkOwnership();
+
+    return () => {
+      el.removeEventListener("scroll", checkOwnership);
+    };
+  }, [send, scrollRef, restoringRef]);
+}
+</file>
+
+<file path="src/debateMachine.ts">
+// src/machines/debateMachine.ts
+import { setup, assign, fromPromise } from "xstate";
+import type { Dialogue } from "../shared/schemas";
+import { replayDialogue } from "./replay";
+
+/* ------------------------------------------------------------
+   Machine
+------------------------------------------------------------ */
+
+export const debateMachine = setup({
+  types: {
+    context: {} as {
+      dialogue: Dialogue | null;
+      error: string | null;
+    },
+    events: {} as
+      | { type: "GENERATE"; dialogue: Dialogue }
+      | { type: "REPLAY" }
+      | { type: "USER_SCROLLED_UP" }
+      | { type: "USER_AT_BOTTOM" }
+      | { type: "FAIL"; error: string },
+  },
+
+  actors: {
+    replayActor: fromPromise(
+      async ({ input }: { input: { dialogue: Dialogue } }) => {
+        await replayDialogue(input.dialogue);
+      },
+    ),
+  },
+}).createMachine({
+  id: "debate",
+  type: "parallel",
+
+  context: {
+    dialogue: null,
+    error: null,
+  },
+
+  states: {
+    /* ------------------------------------------------------------
+       Lifecycle Control Plane
+    ------------------------------------------------------------ */
+
+    lifecycle: {
+      initial: "idle",
+
+      states: {
+        idle: {
+          on: {
+            GENERATE: {
+              target: "ready",
+              actions: assign({
+                dialogue: ({ event }) => event.dialogue,
+                error: () => null,
+              }),
+            },
+          },
+        },
+
+        ready: {
+          on: {
+            REPLAY: {
+              target: "replaying",
+            },
+          },
+        },
+
+        replaying: {
+          invoke: {
+            src: "replayActor",
+            input: ({ context }) => {
+              if (!context.dialogue) {
+                throw new Error("No dialogue available");
+              }
+              return { dialogue: context.dialogue };
+            },
+            onDone: {
+              target: "complete",
+            },
+            onError: {
+              target: "error",
+              actions: assign({
+                error: ({ event }) => String(event.error),
+              }),
+            },
+          },
+        },
+
+        complete: {
+          on: {
+            REPLAY: {
+              target: "replaying",
+            },
+          },
+        },
+
+        error: {
+          on: {
+            GENERATE: {
+              target: "ready",
+              actions: assign({
+                dialogue: ({ event }) => event.dialogue,
+                error: () => null,
+              }),
+            },
+          },
+        },
+      },
+    },
+
+    /* ------------------------------------------------------------
+       Scroll Ownership Control Plane
+    ------------------------------------------------------------ */
+
+    scroll: {
+      initial: "machineOwned",
+
+      states: {
+        machineOwned: {
+          on: {
+            USER_SCROLLED_UP: {
+              target: "userOwned",
+            },
+          },
+        },
+
+        userOwned: {
+          on: {
+            USER_AT_BOTTOM: {
+              target: "machineOwned",
+            },
+          },
+        },
+      },
+    },
+  },
+});
+</file>
+
+<file path="tests/scroll.spec.ts">
+import { test, expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import type { Turn } from "../shared/schemas";
+
+/* ============================================================
+   Scroll Ownership E2E Tests
+
+   These tests validate two layers simultaneously:
+
+   1) Control plane (XState)
+      - machineOwned vs userOwned
+      - USER_SCROLLED_UP / USER_AT_BOTTOM transitions
+
+   2) Physical scroll geometry
+      - Whether the viewport is actually at bottom
+      - Whether auto-scroll truly occurred
+
+   We are NOT just checking state flags.
+   We are validating that physical scroll behavior matches
+   machine authority semantics.
+============================================================ */
+
+/* ------------------------------------------------------------
+   Helpers
+------------------------------------------------------------ */
+
+/**
+ * Creates a tall turn so that scrolling is meaningful.
+ * Each turn contains enough repeated text to produce
+ * vertical overflow in the scroll container.
+ */
+function turn(i: number): Turn {
+  return {
+    speaker: i % 2 === 0 ? "security_engineer" : "application_engineer",
+    mdx: `Turn ${i}\n\n` + "word ".repeat(200),
+  };
+}
+
+/**
+ * Waits until:
+ * 1) The test bridge is installed (window.__socratic exists)
+ * 2) The scroll viewport is mounted in the DOM
+ *
+ * This prevents DOM race conditions where React has not yet mounted.
+ */
+async function waitForAppReady(page: Page) {
+  await page.waitForFunction(() => !!window.__socratic);
+  await page.waitForSelector("[data-testid='scroll-viewport']");
+}
+
+/**
+ * Emits APPEND_TURN events through the bridge.
+ * This simulates replay-driven content growth.
+ */
+async function appendTurns(page: Page, count: number) {
+  for (let i = 0; i < count; i++) {
+    await page.evaluate((payload: Turn) => {
+      window.__socratic?.emit("APPEND_TURN", payload);
+    }, turn(i));
+  }
+}
+
+/**
+ * Simulates a user scroll by mutating scrollTop and
+ * manually dispatching a scroll event.
+ *
+ * This ensures ownership logic is triggered.
+ */
+async function manualScroll(page: Page, delta: number) {
+  await page.evaluate((amount) => {
+    const el = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    el.scrollTop += amount;
+    el.dispatchEvent(new Event("scroll"));
+  }, delta);
+}
+
+/**
+ * Force scroll to bottom.
+ * Used to simulate a user returning control to the machine.
+ */
+async function scrollToBottom(page: Page) {
+  await page.evaluate(() => {
+    const el = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    el.scrollTop = el.scrollHeight;
+    el.dispatchEvent(new Event("scroll"));
+  });
+}
+
+/**
+ * Reads scroll ownership from DOM attribute.
+ * This reflects XState's parallel "scroll" region.
+ */
+async function getOwner(page: Page) {
+  return page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner");
+}
+
+/* ------------------------------------------------------------
+   Console passthrough (useful during debugging)
+------------------------------------------------------------ */
+
+test.beforeEach(async ({ page }) => {
+  page.on("console", (msg) => {
+    console.log(`[browser:${msg.type()}]`, msg.text());
+  });
+});
+
+/* ------------------------------------------------------------
+   Fresh State
+------------------------------------------------------------ */
+
+/**
+ * On first load:
+ *
+ * - No content overflow yet.
+ * - Scroll position is naturally at top.
+ * - But since top === bottom (no overflow),
+ *   machine should own scroll.
+ */
+test("fresh load starts machineOwned", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+
+  const owner = await getOwner(page);
+  expect(owner).toBe("machineOwned");
+});
+
+/* ------------------------------------------------------------
+   Auto-scroll behavior
+------------------------------------------------------------ */
+
+/**
+ * This test verifies the core invariant:
+ *
+ * When machineOwned and content is appended,
+ * the viewport must automatically scroll to bottom.
+ *
+ * We validate BOTH:
+ *   1) Ownership state
+ *   2) Physical geometry
+ *
+ * ------------------------------------------------------------
+ * Geometry Explanation:
+ *
+ *   scrollTop      → distance from top
+ *   clientHeight   → viewport height
+ *   scrollHeight   → total content height
+ *
+ * If the viewport is at bottom:
+ *
+ *   scrollTop + clientHeight ≈ scrollHeight
+ *
+ * ASCII diagram:
+ *
+ *   |----------------------|   <- scrollHeight (content bottom)
+ *   |                      |
+ *   |                      |
+ *   |   visible viewport   |   <- clientHeight
+ *   |                      |
+ *   |----------------------|
+ *   ^
+ *   scrollTop
+ *
+ * Due to subpixel rounding and layout jitter,
+ * we allow a tolerance of 5px.
+ */
+test("machineOwned auto-scrolls on append", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+
+  // Grow content beyond viewport height
+  await appendTurns(page, 8);
+
+  // Machine should retain ownership
+  await expect.poll(() => getOwner(page)).toBe("machineOwned");
+
+  // Verify physical scroll invariant
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const el = document.querySelector(
+          "[data-testid='scroll-viewport']",
+        ) as HTMLElement;
+
+        const bottomEdge = el.scrollTop + el.clientHeight;
+        const contentBottom = el.scrollHeight;
+
+        // Allow 5px tolerance for layout rounding
+        return bottomEdge >= contentBottom - 5;
+      }),
+    )
+    .toBeTruthy();
+});
+
+/* ------------------------------------------------------------
+   Manual Scroll Behavior
+------------------------------------------------------------ */
+
+/**
+ * If the user scrolls upward:
+ *
+ * - We are no longer at bottom
+ * - Ownership must transfer to userOwned
+ *
+ * This ensures:
+ *   machine does not fight the user
+ */
+test("manual scroll up transitions to userOwned", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+
+  await appendTurns(page, 8);
+  await scrollToBottom(page);
+
+  // Simulate user scrolling upward
+  await manualScroll(page, -600);
+
+  await expect.poll(() => getOwner(page)).toBe("userOwned");
+});
+
+/* ------------------------------------------------------------
+   Returning to bottom
+------------------------------------------------------------ */
+
+/**
+ * If the user scrolls back to bottom:
+ *
+ * - USER_AT_BOTTOM event should fire
+ * - Ownership must return to machineOwned
+ *
+ * This restores auto-scroll authority.
+ */
+test("scrolling back to bottom transitions to machineOwned", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+
+  await appendTurns(page, 8);
+  await scrollToBottom(page);
+  await manualScroll(page, -600);
+
+  await expect.poll(() => getOwner(page)).toBe("userOwned");
+
+  // Simulate user returning to bottom
+  await scrollToBottom(page);
+
+  await expect.poll(() => getOwner(page)).toBe("machineOwned");
+});
 </file>
 
 <file path="flake.nix">

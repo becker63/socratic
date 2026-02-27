@@ -101,21 +101,22 @@ export function useAutoScroll(
     // Only scroll when:
     // - layout has settled (heights finalized)
     // - we previously recorded intent to scroll
-    if (layoutReady && pendingScrollRef.current) {
+    if (
+      layoutReady &&
+      pendingScrollRef.current &&
+      scrollOwner === "machineOwned"
+    ) {
       // Mark that this scroll is programmatic.
       restoringRef.current = true;
 
-      // Jump to bottom.
-      // We use scrollHeight to ensure exact bottom alignment.
       el.scrollTop = el.scrollHeight;
 
-      // Manually dispatch scroll so ownership logic recalculates.
-      // Without this, useScrollOwnership may not re-evaluate.
-      el.dispatchEvent(new Event("scroll"));
+      // Let the browser emit its own scroll events.
+      // Do NOT manually dispatch.
 
-      // Reset flags.
-      restoringRef.current = false;
-      pendingScrollRef.current = false;
+      requestAnimationFrame(() => {
+        restoringRef.current = false;
+      });
     }
   }, [blocksLength, layoutReady, scrollOwner]);
 
