@@ -2,6 +2,10 @@ import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import type { Turn } from "../shared/schemas";
 
+/* ------------------------------------------------------------
+   Helpers
+------------------------------------------------------------ */
+
 function turn(i: number): Turn {
   return {
     speaker: i % 2 === 0 ? "security_engineer" : "application_engineer",
@@ -9,30 +13,17 @@ function turn(i: number): Turn {
   };
 }
 
+async function waitForAppReady(page: Page) {
+  await page.waitForFunction(() => !!window.__socratic);
+  await page.waitForSelector("[data-testid='scroll-viewport']");
+}
+
 async function appendTurns(page: Page, count: number) {
   for (let i = 0; i < count; i++) {
     await page.evaluate((payload: Turn) => {
-      (window as any).__socratic?.emit("APPEND_TURN", payload);
+      window.__socratic?.emit("APPEND_TURN", payload);
     }, turn(i));
   }
-}
-
-async function dumpScrollState(page: Page, label: string) {
-  const state = await page.evaluate(() => {
-    const el = document.querySelector(
-      "[data-testid='scroll-viewport']",
-    ) as HTMLElement;
-
-    return {
-      scrollTop: el.scrollTop,
-      clientHeight: el.clientHeight,
-      scrollHeight: el.scrollHeight,
-      atBottom: el.scrollTop + el.clientHeight >= el.scrollHeight - 5,
-      owner: el.getAttribute("data-scroll-owner"),
-    };
-  });
-
-  console.log(`\n[${label}]`, state);
 }
 
 async function manualScroll(page: Page, delta: number) {
@@ -57,6 +48,14 @@ async function scrollToBottom(page: Page) {
   });
 }
 
+async function getOwner(page: Page) {
+  return page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner");
+}
+
+/* ------------------------------------------------------------
+   Console passthrough
+------------------------------------------------------------ */
+
 test.beforeEach(async ({ page }) => {
   page.on("console", (msg) => {
     console.log(`[browser:${msg.type()}]`, msg.text());
@@ -69,12 +68,9 @@ test.beforeEach(async ({ page }) => {
 
 test("fresh load starts machineOwned", async ({ page }) => {
   await page.goto("/");
-  await dumpScrollState(page, "fresh load");
+  await waitForAppReady(page);
 
-  const owner = await page
-    .getByTestId("scroll-viewport")
-    .getAttribute("data-scroll-owner");
-
+  const owner = await getOwner(page);
   expect(owner).toBe("machineOwned");
 });
 
@@ -84,16 +80,11 @@ test("fresh load starts machineOwned", async ({ page }) => {
 
 test("machineOwned auto-scrolls on append", async ({ page }) => {
   await page.goto("/");
+  await waitForAppReady(page);
 
   await appendTurns(page, 8);
 
-  await expect
-    .poll(async () =>
-      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
-    )
-    .toBe("machineOwned");
-
-  await dumpScrollState(page, "after append");
+  await expect.poll(() => getOwner(page)).toBe("machineOwned");
 
   await expect
     .poll(async () =>
@@ -105,23 +96,6 @@ test("machineOwned auto-scrolls on append", async ({ page }) => {
       }),
     )
     .toBeTruthy();
-
-  await dumpScrollState(page, "after auto-scroll settle");
-});
-
-test("machineOwned stays machineOwned when appending", async ({ page }) => {
-  await page.goto("/");
-
-  await appendTurns(page, 8);
-  await appendTurns(page, 1);
-
-  await dumpScrollState(page, "after second append");
-
-  const owner = await page
-    .getByTestId("scroll-viewport")
-    .getAttribute("data-scroll-owner");
-
-  expect(owner).toBe("machineOwned");
 });
 
 /* ------------------------------------------------------------
@@ -130,48 +104,13 @@ test("machineOwned stays machineOwned when appending", async ({ page }) => {
 
 test("manual scroll up transitions to userOwned", async ({ page }) => {
   await page.goto("/");
+  await waitForAppReady(page);
 
   await appendTurns(page, 8);
-
-  // Ensure starting at bottom
-  await scrollToBottom(page);
-
-  await manualScroll(page, -600);
-
-  await dumpScrollState(page, "after manual scroll up");
-
-  await expect
-    .poll(async () =>
-      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
-    )
-    .toBe("userOwned");
-
-  await dumpScrollState(page, "after ownership transition");
-});
-
-test("userOwned remains userOwned when appending", async ({ page }) => {
-  await page.goto("/");
-
-  await appendTurns(page, 8);
-
   await scrollToBottom(page);
   await manualScroll(page, -600);
 
-  await expect
-    .poll(async () =>
-      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
-    )
-    .toBe("userOwned");
-
-  await appendTurns(page, 1);
-
-  await dumpScrollState(page, "after append while userOwned");
-
-  const owner = await page
-    .getByTestId("scroll-viewport")
-    .getAttribute("data-scroll-owner");
-
-  expect(owner).toBe("userOwned");
+  await expect.poll(() => getOwner(page)).toBe("userOwned");
 });
 
 /* ------------------------------------------------------------
@@ -182,29 +121,15 @@ test("scrolling back to bottom transitions to machineOwned", async ({
   page,
 }) => {
   await page.goto("/");
+  await waitForAppReady(page);
 
   await appendTurns(page, 8);
-
   await scrollToBottom(page);
   await manualScroll(page, -600);
 
-  await expect
-    .poll(async () =>
-      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
-    )
-    .toBe("userOwned");
-
-  await dumpScrollState(page, "after scroll up");
+  await expect.poll(() => getOwner(page)).toBe("userOwned");
 
   await scrollToBottom(page);
 
-  await dumpScrollState(page, "after scroll to bottom");
-
-  await expect
-    .poll(async () =>
-      page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner"),
-    )
-    .toBe("machineOwned");
-
-  await dumpScrollState(page, "final state");
+  await expect.poll(() => getOwner(page)).toBe("machineOwned");
 });

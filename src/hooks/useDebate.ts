@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useMachine } from "@xstate/react";
 import {
   PromptRequestSchema,
@@ -15,9 +15,68 @@ export function useDebate(inspect?: any) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [state, send] = useMachine(debateMachine, {
+  // actor is the authoritative runtime instance
+  const [state, originalSend, actor] = useMachine(debateMachine, {
     inspect,
   });
+
+  /* ------------------------------------------------------------
+     Pre-Transition Logging (Event Boundary)
+  ------------------------------------------------------------ */
+
+  // Wrap send so we log every event entering the machine
+  const send = useMemo(() => {
+    return (event: Parameters<typeof originalSend>[0]) => {
+      const before = actor.getSnapshot();
+
+      const payload = {
+        t: performance.now(),
+        phase: "event",
+        event: event.type,
+        value: before.value,
+        context: before.context,
+      };
+
+      console.log("[machine event]", payload);
+
+      if (typeof window !== "undefined") {
+        const w = window as any;
+        w.__socratic?.onMachineEvent?.(payload);
+      }
+
+      originalSend(event);
+    };
+  }, [originalSend, actor]);
+
+  /* ------------------------------------------------------------
+     Post-Transition Logging (State Boundary)
+  ------------------------------------------------------------ */
+
+  useEffect(() => {
+    if (!actor) return;
+
+    const sub = actor.subscribe((snapshot) => {
+      const payload = {
+        t: performance.now(),
+        phase: "transition",
+        value: snapshot.value,
+        context: snapshot.context,
+      };
+
+      console.log("[machine transition]", payload);
+
+      if (typeof window !== "undefined") {
+        const w = window as any;
+        w.__socratic?.onMachineEvent?.(payload);
+      }
+    });
+
+    return () => sub.unsubscribe();
+  }, [actor]);
+
+  /* ------------------------------------------------------------
+     Domain Commands
+  ------------------------------------------------------------ */
 
   async function generate() {
     setLoading(true);
@@ -59,7 +118,7 @@ export function useDebate(inspect?: any) {
     setPrompt,
     loading,
     error,
-    send,
+    send, // wrapped send (instrumented)
     state,
     generate,
     replay,
