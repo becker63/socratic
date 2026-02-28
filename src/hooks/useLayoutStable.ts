@@ -19,7 +19,7 @@ import { useEffect, useState } from "react";
 export function useLayoutStable(
   scrollRef: React.RefObject<HTMLDivElement | null>,
   blocks: unknown[],
-  settleMs: number = 150,
+  settleMs: number = 300,
 ) {
   // True once layout has fully settled
   const [ready, setReady] = useState(false);

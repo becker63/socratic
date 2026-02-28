@@ -45,10 +45,10 @@ export function App({ inspector }: { inspector?: any }) {
   const lastBlock = blocks[blocks.length - 1];
   const lastHeight = lastBlock?.height ?? 0;
 
-  const spacerHeight = Math.max(
-    0,
-    Math.floor((viewportHeight - lastHeight) / 2),
-  );
+  const spacerHeight =
+    lastBlock?.height != null
+      ? Math.max(0, Math.floor((viewportHeight - lastBlock.height) / 2))
+      : 0;
 
   /* ------------------------------------------------------------
      Scroll Ownership
@@ -279,7 +279,12 @@ function MeasuredBubble({
       <MotionBox
         data-testid="turn-bubble"
         ref={ref}
-        transition={{ duration: 0.4, ease: "easeOut" }}
+        initial={{ opacity: 0, y: 20, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{
+          duration: 0.6,
+          ease: [0.22, 1, 0.36, 1], // smooth spring-like curve
+        }}
         width="70vw"
         maxW="1100px"
         fontSize="18px"

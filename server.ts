@@ -4,86 +4,107 @@ import { PromptRequestSchema, DialogueSchema } from "./shared/schemas";
 import { mkdirSync, writeFileSync } from "fs";
 import { dirname } from "path";
 
+/* ============================================================
+   HTTP-Level Instrumentation
+============================================================ */
+
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
+  fetch: async (url, options) => {
+    const httpStart = performance.now();
+    console.log(`[http] → ${url}`);
+
+    const res = await fetch(url, options);
+
+    const httpDuration = performance.now() - httpStart;
+    console.log(
+      `[http] ← ${url} status=${res.status} duration=${Math.round(
+        httpDuration,
+      )}ms`,
+    );
+
+    return res;
+  },
 });
 
+/* ============================================================
+   System Prompt
+============================================================ */
+
 const SYSTEM = `
-You generate a structured architectural debate between two engineer archetypes.
+  You generate a structured architectural debate between two engineer archetypes.
 
-Return JSON that matches the provided schema exactly.
+  Return ONLY valid JSON that matches the provided schema exactly.
 
-STRUCTURE:
-- topic: string
-- turns: array of objects
-    - speaker: "security_engineer" | "application_engineer"
-    - mdx: string (valid markdown / MDX content)
+  STRUCTURE
+  - topic: string
+  - turns: array of 12 objects
+      - speaker: "security_engineer" | "application_engineer"
+      - mdx: string (valid markdown)
 
-CONVERSATION RULES:
-- The first turn must be from "security_engineer".
-- Speakers must strictly alternate.
-- Each speaker must contribute 3–4 turns.
-- Total turns: 6–8.
-- The debate must include real disagreement and visible trade-offs.
-- Avoid generic agreement or polite convergence too early.
+  CONVERSATION RULES
+  - EXACTLY 12 turns.
+  - First turn MUST be from "security_engineer".
+  - Speakers MUST strictly alternate.
+  - Each turn must directly respond to the previous one.
+  - Let them disagree naturally.
+  - They do not need to fully agree at the end.
 
-CONTENT RULES:
-- The "mdx" field must contain valid markdown.
-- Allowed constructs:
-    - short paragraphs
-    - bullet lists (max 3 per turn)
-    - headings
-    - fenced code blocks
-    - fenced mermaid diagrams
-- Do not include markdown fences outside the mdx string.
-- Do not include commentary outside the JSON response.
-- Do not include extra keys.
+  STYLE
+  - Casual but thoughtful.
+  - Sounds like two experienced engineers talking it through.
+  - Avoid sounding like a design document.
+  - Keep sentences short and natural.
+  - No dramatic speeches.
 
-RESPONSE LENGTH RULES:
-- Each turn must be under 500 characters.
-- Keep ideas focused and tight.
-- Avoid dense implementation detail unless directly relevant.
-- Formatting (headings, bullets, diagrams) is encouraged — but must improve clarity, not increase length.
+  VISUAL FORMAT
 
-MERMAID RULES:
-- Use fenced code block with language "mermaid".
-- Must begin with: flowchart LR
-- Keep diagrams minimal (≤6 nodes, ≤8 edges).
-- No nested subgraphs.
-- Do not use:
-    - click directives
-    - classDef
-    - note over
-    - sequenceDiagram
+  Across the 12 turns:
 
-STYLE AND TONE:
+  - Include at least 3 fenced mermaid diagrams.
+  - Include at least 3 fenced code blocks.
+  - Distribute them naturally (not clustered together).
+  - Only use them when they clarify a concrete example.
 
-- Write like two senior engineers debating at a whiteboard.
-- Conversational, sharp, and opinionated.
-- Avoid sounding like a design document or compliance checklist.
-- Use MDX formatting creatively to make ideas visually clear.
-- Avoid long, dense bullet lists.
-- Avoid stacking acronyms (max 2 per turn unless essential).
+  Do not include a diagram or code block in every turn.
+  Avoid decorative formatting.
 
-DIALOGUE DYNAMICS:
+  MERMAID RULES
+  - Use fenced block with \`\`\`mermaid
+  - Must begin with: flowchart LR
+  - Max 6 nodes
+  - Max 8 edges
+  - No click directives
+  - No classDef
+  - No sequenceDiagram
+  - No subgraph
 
-- Each turn must directly respond to the previous turn.
-- Maintain tension; do not converge too quickly.
-- Make the philosophical difference clear.
-- The final turn may propose compromise, but preserve worldview contrast.
+  LENGTH
+  - 250–450 characters per turn.
+  - Keep ideas sharp and visual.
+  - Formatting should improve clarity.
 
-CHARACTERIZATION:
+  PERSONAS
 
-Security Engineer:
-- Thinks in terms of blast radius and worst-case scenarios.
-- Pushes for principled, uniform guardrails.
-- Often asks “what happens when…” or says “assume compromise.”
+  Security Engineer:
+  Has been burned before. Thinks about what breaks at 3am.
+  Worries about hidden edge cases and long-term mess.
+  Cares about guardrails, but doesn’t enjoy being the blocker.
+  Talks in plain language and uses simple diagrams when needed.
+  Sometimes feels like the boring one in the room.
 
-Application Engineer:
-- Thinks in terms of velocity and developer experience.
-- Pushes for incremental, pragmatic solutions.
-- Often asks “can we…” or “do we really need…”
+  Application Engineer:
+  Likes building things and getting feedback fast.
+  Thinks some risks are fine if they’re visible and reversible.
+  Cares about momentum and keeping systems flexible.
+  Talks through examples and practical trade-offs.
+  Gets frustrated when rules slow obvious progress.
+
 `.trim();
+
+/* ============================================================
+   Utilities
+============================================================ */
 
 function json(data: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(data), {
@@ -98,13 +119,60 @@ function writeFixture(dialogue: unknown) {
   writeFileSync(path, JSON.stringify(dialogue, null, 2), "utf-8");
 }
 
+function estimateTokens(text: string) {
+  return Math.ceil(text.length / 4);
+}
+
+function memorySnapshot() {
+  const mem = process.memoryUsage();
+  return {
+    rss_mb: Math.round(mem.rss / 1024 / 1024),
+    heap_used_mb: Math.round(mem.heapUsed / 1024 / 1024),
+    heap_total_mb: Math.round(mem.heapTotal / 1024 / 1024),
+  };
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
+/* ============================================================
+   Dialogue Handler
+============================================================ */
+
 async function handleDialogue(req: Request) {
+  const requestId = crypto.randomUUID();
+  const serverStart = performance.now();
+
+  console.log(`\n==============================`);
+  console.log(`[${requestId}] 📥 NEW REQUEST`);
+  console.log(`[${requestId}] memory_at_start=`, memorySnapshot());
+
   const body = PromptRequestSchema.parse(await req.json());
 
-  const start = performance.now();
+  console.log(`[${requestId}] topic="${body.prompt}"`);
+  console.log(`[${requestId}] prompt_chars=${body.prompt.length}`);
+  console.log(`[${requestId}] system_chars=${SYSTEM.length}`);
 
-  const response = await client.responses.parse({
-    model: "gpt-5",
+  const approxInputTokens =
+    estimateTokens(SYSTEM) + estimateTokens(body.prompt);
+
+  console.log(`[${requestId}] approx_input_tokens=${approxInputTokens}`);
+
+  /* ------------------------------------------------------------
+     OpenAI Call
+  ------------------------------------------------------------ */
+
+  const openaiStart = performance.now();
+  console.log(`[${requestId}] 🚀 calling OpenAI`);
+
+  const openaiPromise = client.responses.parse({
+    model: "gpt-5-mini",
     input: [
       { role: "system", content: SYSTEM },
       { role: "user", content: `Topic: ${body.prompt}` },
@@ -114,21 +182,104 @@ async function handleDialogue(req: Request) {
     },
   });
 
-  const duration = performance.now() - start;
+  type OpenAIResponse = Awaited<typeof openaiPromise>;
 
-  const parsed = DialogueSchema.parse(response.output_parsed);
+  let response: OpenAIResponse;
 
-  // Minimal but useful logging
+  try {
+    response = await withTimeout(openaiPromise, 90_000);
+  } catch (err) {
+    console.error(`[${requestId}] ❌ OpenAI call failed`);
+    console.error(err);
+    throw err;
+  }
+
+  const openaiDuration = performance.now() - openaiStart;
+
   console.log(
-    `[openai] model=${response.model} ` +
-      `latency=${duration.toFixed(0)}ms ` +
-      `tokens=${response.usage?.total_tokens ?? "?"}`,
+    `[${requestId}] ✅ OpenAI finished in ${Math.round(openaiDuration)}ms`,
+  );
+
+  if (openaiDuration > 8000) {
+    console.warn(
+      `[${requestId}] ⚠️ slow_openai_call=${Math.round(openaiDuration)}ms`,
+    );
+  }
+
+  /* ------------------------------------------------------------
+     Schema Validation
+  ------------------------------------------------------------ */
+
+  const schemaStart = performance.now();
+  const parsed = DialogueSchema.parse(response.output_parsed);
+  const schemaDuration = performance.now() - schemaStart;
+
+  console.log(
+    `[${requestId}] 🧠 schema_validation_ms=${Math.round(schemaDuration)}`,
+  );
+
+  /* ------------------------------------------------------------
+     Metrics
+  ------------------------------------------------------------ */
+
+  const usage = response.usage;
+
+  const perTurnStats = parsed.turns.map((t, i) => ({
+    index: i,
+    speaker: t.speaker,
+    chars: t.mdx.length,
+    approx_tokens: estimateTokens(t.mdx),
+    hasMermaid: t.mdx.includes("```mermaid"),
+    hasCodeBlock: t.mdx.includes("```") && !t.mdx.includes("```mermaid"),
+  }));
+
+  const totalDuration = performance.now() - serverStart;
+
+  console.log(
+    JSON.stringify(
+      {
+        requestId,
+        event: "openai_generation",
+        model: response.model,
+        timing: {
+          openai_ms: Math.round(openaiDuration),
+          schema_ms: Math.round(schemaDuration),
+          total_ms: Math.round(totalDuration),
+        },
+        tokens: {
+          input: usage?.input_tokens ?? null,
+          output: usage?.output_tokens ?? null,
+          total: usage?.total_tokens ?? null,
+        },
+        output_size_chars: JSON.stringify(parsed).length,
+        turns: parsed.turns.length,
+        avg_chars_per_turn: Math.round(
+          parsed.turns.reduce((a, t) => a + t.mdx.length, 0) /
+            parsed.turns.length,
+        ),
+        visual_counts: {
+          mermaid: perTurnStats.filter((t) => t.hasMermaid).length,
+          codeBlocks: perTurnStats.filter((t) => t.hasCodeBlock).length,
+        },
+        per_turn: perTurnStats,
+        memory_at_end: memorySnapshot(),
+      },
+      null,
+      2,
+    ),
   );
 
   writeFixture(parsed);
 
+  console.log(`[${requestId}] 🎉 COMPLETE`);
+  console.log(`==============================\n`);
+
   return json(parsed);
 }
+
+/* ============================================================
+   Bun Server
+============================================================ */
 
 Bun.serve({
   port: 3001,
@@ -143,6 +294,8 @@ Bun.serve({
       try {
         return await handleDialogue(req);
       } catch (e) {
+        console.error("🔥 SERVER ERROR:");
+        console.error(e);
         return json(
           { error: e instanceof Error ? e.message : String(e) },
           { status: 400 },

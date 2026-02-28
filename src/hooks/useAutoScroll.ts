@@ -6,16 +6,15 @@ function easeOutCubic(t: number) {
 
 export function useAutoScroll(
   scrollRef: React.RefObject<HTMLDivElement | null>,
-  blocksLength: number,
+  layoutVersion: number,
   scrollOwner: "machineOwned" | "userOwned",
   layoutReady: boolean,
 ) {
-  const prevLengthRef = useRef(blocksLength);
+  const prevVersionRef = useRef(layoutVersion);
   const pendingScrollRef = useRef(false);
   const restoringRef = useRef(false);
   const rafRef = useRef<number | null>(null);
 
-  // ✅ Avoid stale-closure issues inside rAF
   const ownerRef = useRef(scrollOwner);
   ownerRef.current = scrollOwner;
 
@@ -32,11 +31,11 @@ export function useAutoScroll(
     };
 
     /* ------------------------------------------------------------
-       Phase 1 — Detect Content Growth
+       Phase 1 — Detect New Stable Layout Cycle
     ------------------------------------------------------------ */
 
-    if (blocksLength !== prevLengthRef.current) {
-      prevLengthRef.current = blocksLength;
+    if (layoutVersion !== prevVersionRef.current) {
+      prevVersionRef.current = layoutVersion;
 
       if (scrollOwner === "machineOwned") {
         pendingScrollRef.current = true;
@@ -44,7 +43,7 @@ export function useAutoScroll(
     }
 
     /* ------------------------------------------------------------
-       Phase 2 — Execute Scroll
+       Phase 2 — Execute Scroll After Stable Commit
     ------------------------------------------------------------ */
 
     if (
@@ -54,68 +53,78 @@ export function useAutoScroll(
     ) {
       pendingScrollRef.current = false;
 
-      // Always cancel any prior animation before starting a new one
       cancel();
 
-      const start = el.scrollTop;
-
-      // ✅ Correct "bottom" scrollTop target
-      const target = Math.max(0, el.scrollHeight - el.clientHeight);
-
-      // Nothing to do
-      if (Math.abs(target - start) < 1) {
-        restoringRef.current = false;
-        return;
-      }
-
-      restoringRef.current = true;
-
       const isTest = import.meta.env.MODE === "test";
-      if (isTest) {
-        el.scrollTop = target;
-        restoringRef.current = false;
-        return;
-      }
 
-      const duration = 700; // ms
-      const startTime = performance.now();
+      // 🔥 Wait two frames for DOM + motion flush
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = requestAnimationFrame(() => {
+          const currentEl = scrollRef.current;
+          if (!currentEl || ownerRef.current !== "machineOwned") {
+            cancel();
+            return;
+          }
 
-      const animate = (now: number) => {
-        const currentEl = scrollRef.current;
+          // 🔥 NEW: Prevent scroll cycle when no overflow exists
+          if (currentEl.scrollHeight <= currentEl.clientHeight) {
+            restoringRef.current = false;
+            return;
+          }
 
-        // If we lost the element, don't leave restoring stuck true
-        if (!currentEl) {
-          cancel();
-          return;
-        }
+          // 🔥 Recompute AFTER settle
+          const start = currentEl.scrollTop;
+          const target = Math.max(
+            0,
+            currentEl.scrollHeight - currentEl.clientHeight,
+          );
 
-        // Abort if ownership changed mid-animation
-        if (ownerRef.current !== "machineOwned") {
-          cancel();
-          return;
-        }
+          const distance = target - start;
 
-        const elapsed = now - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        const eased = easeOutCubic(progress);
+          if (Math.abs(distance) < 1) {
+            restoringRef.current = false;
+            return;
+          }
 
-        const next = start + (target - start) * eased;
-        currentEl.scrollTop = next;
+          restoringRef.current = true;
 
-        if (progress < 1) {
+          if (isTest) {
+            currentEl.scrollTop = target;
+            restoringRef.current = false;
+            return;
+          }
+
+          const duration = 700;
+          const startTime = performance.now();
+
+          const animate = (now: number) => {
+            const elNow = scrollRef.current;
+            if (!elNow || ownerRef.current !== "machineOwned") {
+              cancel();
+              return;
+            }
+
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = easeOutCubic(progress);
+
+            elNow.scrollTop = start + distance * eased;
+
+            if (progress < 1) {
+              rafRef.current = requestAnimationFrame(animate);
+            } else {
+              elNow.scrollTop = target;
+              cancel();
+            }
+          };
+
           rafRef.current = requestAnimationFrame(animate);
-        } else {
-          currentEl.scrollTop = target; // guarantee exact bottom
-          cancel();
-        }
-      };
-
-      rafRef.current = requestAnimationFrame(animate);
+        });
+      });
     }
 
-    // ✅ Critical for StrictMode: cleanup must clear restoringRef
     return () => cancel();
-  }, [blocksLength, layoutReady, scrollOwner, scrollRef]);
+  }, [layoutVersion, layoutReady, scrollOwner, scrollRef]);
 
   return restoringRef;
 }

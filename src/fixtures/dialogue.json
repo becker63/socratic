@@ -3,27 +3,51 @@
   "turns": [
     {
       "speaker": "security_engineer",
-      "mdx": "## Assume breach, design for blast radius\n- mTLS on every hop\n- Per-service identity via SPIFFE\n- Deny-by-default egress via a proxy\nWhat happens when the noisiest service gets popped and the network is flat? Without uniform guardrails, lateral movement is trivial."
+      "mdx": "I keep picturing a pager at 3am: tokens stale, mesh rules mismatched, services silent. Zero trust is right, but fragile if half-rolled. We need clear boundaries and single sources of truth for identity and policy.\n\n```mermaid\nflowchart LR\nClient-->Gateway\nGateway-->AuthZ\nGateway-->SvcA\nAuthZ-->IDP\n```"
     },
     {
       "speaker": "application_engineer",
-      "mdx": "## We need velocity\nFull mesh + heavy policy on day one will kneecap devs. Latency, sidecars, cert churn.\n- JWT at the edge via gateway\n- mTLS only for critical paths first\n- Audit policies before enforce\nDo we really need uniform everywhere before we ship anything?"
+      "mdx": "I hear the pager fear. I also care about shipping and feedback loops. We can validate identity locally and still move fast. For dev flow, passing a token is easy:\n\n```bash\ncurl -H 'Authorization: Bearer $TOKEN' https://svc-a.internal/endpoint\n```\n\nShort tokens are reversible and fast to test."
     },
     {
       "speaker": "security_engineer",
-      "mdx": "## Weakest link, biggest blast\nYour plan leaves soft targets attackers pivot through. Partial zero trust is zero trust in name only.\n- Uniform mTLS cuts lateral paths\n- Consider eBPF node agents if sidecars hurt\nAssume compromise; minimize blast radius uniformly."
+      "mdx": "Local checks help, but trust needs enforcement at the data path. Sidecars and a policy engine reduce blast radius. Make auth decisions consistent and observable so we don't get divergent behavior across environments.\n\n```mermaid\nflowchart LR\nApp-->Sidecar\nSidecar-->mTLS\nSidecar-->OPA\nOPA-->CA\n```"
     },
     {
       "speaker": "application_engineer",
-      "mdx": "## Scope and stage, not stall\nI can accept uniform identity (SPIFFE), but keep authz coarse (RBAC) first. Canary enforcement, dev permissive, prod strict.\n```yaml\nallow: serviceA->serviceB if scope: orders\n```\nLet’s harden iteratively while we keep features moving."
+      "mdx": "Sidecars add ops overhead. Developers will resist if they have to write policies for every route. We should provide sane defaults and let teams opt-in for stricter rules. Example policy skeleton to start from:\n\n```yaml\nselector: 'svc-a'\nallow: ['svc-b']\nmethods: ['GET','POST']\n```"
     },
     {
       "speaker": "security_engineer",
-      "mdx": "## Non‑negotiables, with guardrails\n- Workload identity + mTLS by default\n- Deny‑by‑default east‑west\n- Egress allowlist with logged break‑glass\n```mermaid\nflowchart LR\nClient-->Gateway\nGateway-->A\nA-->Policy\nPolicy-->B\n```\nPut a policy engine on every hop; no silent bypass."
+      "mdx": "Defaults are good, but we must plan revocation and audit. Short-lived certs plus a revocation channel keeps compromised workloads limited. Also log decisions centrally so incident triage isn't guessing who accepted which token.\n\n```mermaid\nflowchart LR\nIDP-->Revoker\nRevoker-->Proxy\nProxy-->Service\nService-->Audit\n```"
     },
     {
       "speaker": "application_engineer",
-      "mdx": "## Deal—platform owns the pain\nI’ll take your must‑haves if the platform handles it:\n- Automated certs/rotation and golden sidecar or node agent\n- Policy templates, tests in pipeline, clear defaults\n- Escape hatch with SLO‑based review\nWe move fast, you get uniform guardrails. Tension stays healthy."
+      "mdx": "Agreed on logs and short certs. My worry: if we lock everything down too fast we slow feature work. Let's phase: adopt identity + audit first, then enforce authz on critical paths, then widen. Keep rollback simple and use feature flags for gating."
+    },
+    {
+      "speaker": "security_engineer",
+      "mdx": "Phased approach works if boundaries are strict. Identity isn't authorization. You still need fine-grained checks at ingress to sensitive services. Make it easy to add checks with middleware that fails closed by default, and surface test harnesses.\n\n```python\ndef authz_middleware(req):\n    token = req.headers.get('Authorization')\n    if not check(token, req.path):\n        return Response(status=403)\n    return next(req)\n```"
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "If middleware is boilerplate, generate it. Tooling is the sweet spot: SDKs, templates, and CI helpers that inject sidecar configs. Automate the repetitive stuff so teams adopt without reinventing.\n\n```mermaid\nflowchart LR\nCI-->Inject\nInject-->Cluster\nCluster-->App\n```"
+    },
+    {
+      "speaker": "security_engineer",
+      "mdx": "We also need SLOs and tracing for the auth path. Authz latency spikes can cascade. Track authz_latency, deny_rate, token_validation_errors. Alert on growth and add circuit breakers to avoid taking down dependent services during failures."
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "Operational controls make me happier. We still need runtime flexibility: feature toggles and gradual rollouts let us tighten rules without blocking customers. A simple flag file per-service is low friction:\n\n```yaml\nfeature_flags:\n  zero_trust_enforce: false\n  authz_strict: 'canary'\n```"
+    },
+    {
+      "speaker": "security_engineer",
+      "mdx": "Flags are useful, but they must default to safe states and be gated by canaries plus automated rollback. Also tie flags to audit logs and require approval for global flips. Otherwise a mis-set flag causes a broad outage at 3am."
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "Okay, here's a pragmatic plan: start with identity + central audit, scaffold middleware and SDKs, enable short-lived creds, and gate strict authz by canary + feature flag. We'll automate rollbacks and provide templates so devs don’t fight guardrails."
     }
   ]
 }

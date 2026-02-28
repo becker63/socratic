@@ -151,231 +151,6 @@ export type Events = {
 export const bus = mitt<Events>();
 </file>
 
-<file path="tests/utils/scrollTestUtils.ts">
-import type { Page } from "@playwright/test";
-import type { Turn } from "../../shared/schemas";
-
-/* ============================================================
-   Scroll Test Utilities
-
-   These helpers are shared across:
-
-   - scroll.spec.ts
-   - scroll-centering.spec.ts
-
-   They intentionally abstract DOM plumbing so tests
-   read like behavioral specifications instead of
-   browser scripting.
-============================================================ */
-
-/* ------------------------------------------------------------
-   Turn Factory
------------------------------------------------------------- */
-
-/**
- * Creates a tall turn so that scrolling is meaningful.
- *
- * Each turn contains enough repeated text to produce
- * vertical overflow in the scroll container.
- *
- * This guarantees:
- * - scrollHeight > clientHeight
- * - scrolling physics are observable
- */
-export function turn(i: number): Turn {
-  return {
-    speaker: i % 2 === 0 ? "security_engineer" : "application_engineer",
-    mdx: `Turn ${i}\n\n` + "word ".repeat(200),
-  };
-}
-
-/* ------------------------------------------------------------
-   App Readiness
------------------------------------------------------------- */
-
-/**
- * Waits until:
- *
- * 1) The test bridge is installed (window.__socratic exists)
- * 2) The scroll viewport is mounted in the DOM
- *
- * This prevents race conditions where:
- * - React has not mounted yet
- * - The machine has not initialized
- */
-export async function waitForAppReady(page: Page) {
-  await page.waitForFunction(() => !!window.__socratic);
-  await page.waitForSelector("[data-testid='scroll-viewport']");
-}
-
-/* ------------------------------------------------------------
-   Content Growth
------------------------------------------------------------- */
-
-/**
- * Emits APPEND_TURN events through the test bridge.
- *
- * This simulates replay-driven content growth
- * without invoking the actual replay actor timing.
- *
- * We intentionally bypass delay mechanics
- * so tests run deterministically.
- */
-export async function appendTurns(page: Page, count: number) {
-  for (let i = 0; i < count; i++) {
-    await page.evaluate((payload: Turn) => {
-      window.__socratic?.emit("APPEND_TURN", payload);
-    }, turn(i));
-  }
-}
-
-/* ------------------------------------------------------------
-   Manual Scroll Simulation
------------------------------------------------------------- */
-
-/**
- * Simulates a user scroll by:
- *
- * 1) Mutating scrollTop
- * 2) Manually dispatching a scroll event
- *
- * Why dispatch?
- * Because ownership logic listens to the scroll event,
- * not scrollTop mutation alone.
- */
-export async function manualScroll(page: Page, delta: number) {
-  await page.evaluate((amount) => {
-    const el = document.querySelector(
-      "[data-testid='scroll-viewport']",
-    ) as HTMLElement;
-
-    // Simulate real wheel intent
-    el.dispatchEvent(
-      new WheelEvent("wheel", {
-        deltaY: amount,
-        bubbles: true,
-      }),
-    );
-
-    // Apply scroll movement
-    el.scrollTop += amount;
-
-    el.dispatchEvent(new Event("scroll"));
-  }, delta);
-}
-
-/**
- * Force scroll to bottom.
- *
- * Used to simulate a user returning control to the machine.
- *
- * Equivalent invariant:
- *   scrollTop + clientHeight ≈ scrollHeight
- */
-export async function scrollToBottom(page: Page) {
-  await page.evaluate(() => {
-    const el = document.querySelector(
-      "[data-testid='scroll-viewport']",
-    ) as HTMLElement;
-
-    el.scrollTop = el.scrollHeight;
-    el.dispatchEvent(new Event("scroll"));
-  });
-}
-
-/* ------------------------------------------------------------
-   Ownership Introspection
------------------------------------------------------------- */
-
-/**
- * Reads scroll ownership from DOM attribute.
- *
- * This reflects XState's parallel "scroll" region.
- *
- * We intentionally assert via DOM rather than machine snapshot
- * so tests validate actual UI integration.
- */
-export async function getScrollOwner(page: Page) {
-  return page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner");
-}
-
-/* ------------------------------------------------------------
-   Physical Scroll Geometry
------------------------------------------------------------- */
-
-/**
- * Determines whether the viewport is physically at bottom.
- *
- * Geometry:
- *
- *   scrollTop      → distance from top
- *   clientHeight   → viewport height
- *   scrollHeight   → total content height
- *
- * Bottom invariant:
- *
- *   scrollTop + clientHeight ≈ scrollHeight
- *
- * Due to subpixel rounding and layout jitter,
- * we allow a tolerance of 5px.
- */
-export async function isPhysicallyAtBottom(page: Page) {
-  return page.evaluate(() => {
-    const el = document.querySelector(
-      "[data-testid='scroll-viewport']",
-    ) as HTMLElement;
-
-    const bottomEdge = el.scrollTop + el.clientHeight;
-    const contentBottom = el.scrollHeight;
-
-    return bottomEdge >= contentBottom - 5;
-  });
-}
-
-/* ------------------------------------------------------------
-   Centering Geometry (New Invariant)
------------------------------------------------------------- */
-
-/**
- * Measures how far the newest bubble midpoint
- * deviates from viewport midpoint.
- *
- * Used to validate centering behavior.
- *
- * Invariant:
- *
- *   abs(bubbleMid - viewportMid) < tolerance
- *
- * ASCII sketch:
- *
- *   | viewport top
- *   |
- *   |     [ last bubble ]
- *   |         *
- *   |         | midpoint
- *   |
- *   |-----------------------
- *          viewport mid
- */
-export async function getLastBubbleMidpointDelta(page: Page) {
-  return page.evaluate(() => {
-    const bubbles = Array.from(
-      document.querySelectorAll("[data-testid='turn-bubble']"),
-    ) as HTMLElement[];
-
-    if (bubbles.length === 0) return null;
-
-    const last = bubbles[bubbles.length - 1];
-    const rect = last!.getBoundingClientRect();
-
-    const bubbleMid = rect.top + rect.height / 2;
-    const viewportMid = window.innerHeight / 2;
-
-    return Math.abs(bubbleMid - viewportMid);
-  });
-}
-</file>
-
 <file path="tests/scroll-centering.spec.ts">
 import { test, expect } from "@playwright/test";
 import {
@@ -841,7 +616,7 @@ import { useEffect, useState } from "react";
 export function useLayoutStable(
   scrollRef: React.RefObject<HTMLDivElement | null>,
   blocks: unknown[],
-  settleMs: number = 150,
+  settleMs: number = 300,
 ) {
   // True once layout has fully settled
   const [ready, setReady] = useState(false);
@@ -1095,14 +870,34 @@ import { bus } from "./bus";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Global pacing control.
+ * 1   = normal
+ * 1.5 = slower
+ * 2   = cinematic slow
+ * 0.5 = fast
+ */
+const REPLAY_SPEED = 1.6;
+
 function computeDelay(mdx: string) {
-  const words = mdx.split(/\s+/).length;
+  const words = mdx.split(/\s+/).filter(Boolean).length;
 
-  // Base delay + reading time
-  const base = 800; // minimum pause
-  const perWord = 25; // reading pacing
+  // Base reading rhythm
+  const base = 1400; // initial pause before reading
+  const perWord = 45; // reading pacing per word
 
-  return base + words * perWord;
+  let delay = base + words * perWord;
+
+  // Visual soak time
+  if (mdx.includes("```mermaid")) {
+    delay += 2000; // diagrams deserve longer pause
+  }
+
+  if (mdx.includes("```") && !mdx.includes("```mermaid")) {
+    delay += 1400; // code blocks get extra time
+  }
+
+  return delay * REPLAY_SPEED;
 }
 
 export async function replayDialogue(dialogue: Dialogue) {
@@ -1186,10 +981,228 @@ export function installTestBridge() {
 }
 </file>
 
-<file path="test-results/.last-run.json">
-{
-  "status": "passed",
-  "failedTests": []
+<file path="tests/utils/scrollTestUtils.ts">
+import type { Page } from "@playwright/test";
+import type { Turn } from "../../shared/schemas";
+
+/* ============================================================
+   Scroll Test Utilities
+
+   These helpers are shared across:
+
+   - scroll.spec.ts
+   - scroll-centering.spec.ts
+
+   They intentionally abstract DOM plumbing so tests
+   read like behavioral specifications instead of
+   browser scripting.
+============================================================ */
+
+/* ------------------------------------------------------------
+   Turn Factory
+------------------------------------------------------------ */
+
+/**
+ * Creates a tall turn so that scrolling is meaningful.
+ *
+ * Each turn contains enough repeated text to produce
+ * vertical overflow in the scroll container.
+ *
+ * This guarantees:
+ * - scrollHeight > clientHeight
+ * - scrolling physics are observable
+ */
+export function turn(i: number): Turn {
+  return {
+    speaker: i % 2 === 0 ? "security_engineer" : "application_engineer",
+    mdx: `Turn ${i}\n\n` + "word ".repeat(200),
+  };
+}
+
+/* ------------------------------------------------------------
+   App Readiness
+------------------------------------------------------------ */
+
+/**
+ * Waits until:
+ *
+ * 1) The test bridge is installed (window.__socratic exists)
+ * 2) The scroll viewport is mounted in the DOM
+ *
+ * This prevents race conditions where:
+ * - React has not mounted yet
+ * - The machine has not initialized
+ */
+export async function waitForAppReady(page: Page) {
+  await page.waitForFunction(() => !!window.__socratic);
+  await page.waitForSelector("[data-testid='scroll-viewport']");
+}
+
+/* ------------------------------------------------------------
+   Content Growth
+------------------------------------------------------------ */
+
+/**
+ * Emits APPEND_TURN events through the test bridge.
+ *
+ * This simulates replay-driven content growth
+ * without invoking the actual replay actor timing.
+ *
+ * We intentionally bypass delay mechanics
+ * so tests run deterministically.
+ */
+export async function appendTurns(page: Page, count: number) {
+  for (let i = 0; i < count; i++) {
+    await page.evaluate((payload: Turn) => {
+      window.__socratic?.emit("APPEND_TURN", payload);
+    }, turn(i));
+  }
+}
+
+/* ------------------------------------------------------------
+   Manual Scroll Simulation
+------------------------------------------------------------ */
+
+/**
+ * Simulates a user scroll by:
+ *
+ * 1) Mutating scrollTop
+ * 2) Manually dispatching a scroll event
+ *
+ * Why dispatch?
+ * Because ownership logic listens to the scroll event,
+ * not scrollTop mutation alone.
+ */
+export async function manualScroll(page: Page, delta: number) {
+  await page.evaluate((amount) => {
+    const el = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    // Simulate real wheel intent
+    el.dispatchEvent(
+      new WheelEvent("wheel", {
+        deltaY: amount,
+        bubbles: true,
+      }),
+    );
+
+    // Apply scroll movement
+    el.scrollTop += amount;
+
+    el.dispatchEvent(new Event("scroll"));
+  }, delta);
+}
+
+/**
+ * Force scroll to bottom.
+ *
+ * Used to simulate a user returning control to the machine.
+ *
+ * Equivalent invariant:
+ *   scrollTop + clientHeight ≈ scrollHeight
+ */
+export async function scrollToBottom(page: Page) {
+  await page.evaluate(() => {
+    const el = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    el.scrollTop = el.scrollHeight;
+    el.dispatchEvent(new Event("scroll"));
+  });
+}
+
+/* ------------------------------------------------------------
+   Ownership Introspection
+------------------------------------------------------------ */
+
+/**
+ * Reads scroll ownership from DOM attribute.
+ *
+ * This reflects XState's parallel "scroll" region.
+ *
+ * We intentionally assert via DOM rather than machine snapshot
+ * so tests validate actual UI integration.
+ */
+export async function getScrollOwner(page: Page) {
+  return page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner");
+}
+
+/* ------------------------------------------------------------
+   Physical Scroll Geometry
+------------------------------------------------------------ */
+
+/**
+ * Determines whether the viewport is physically at bottom.
+ *
+ * Geometry:
+ *
+ *   scrollTop      → distance from top
+ *   clientHeight   → viewport height
+ *   scrollHeight   → total content height
+ *
+ * Bottom invariant:
+ *
+ *   scrollTop + clientHeight ≈ scrollHeight
+ *
+ * Due to subpixel rounding and layout jitter,
+ * we allow a tolerance of 5px.
+ */
+export async function isPhysicallyAtBottom(page: Page) {
+  return page.evaluate(() => {
+    const el = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    const bottomEdge = el.scrollTop + el.clientHeight;
+    const contentBottom = el.scrollHeight;
+
+    return bottomEdge >= contentBottom - 5;
+  });
+}
+
+/* ------------------------------------------------------------
+   Centering Geometry (New Invariant)
+------------------------------------------------------------ */
+
+/**
+ * Measures how far the newest bubble midpoint
+ * deviates from viewport midpoint.
+ *
+ * Used to validate centering behavior.
+ *
+ * Invariant:
+ *
+ *   abs(bubbleMid - viewportMid) < tolerance
+ *
+ * ASCII sketch:
+ *
+ *   | viewport top
+ *   |
+ *   |     [ last bubble ]
+ *   |         *
+ *   |         | midpoint
+ *   |
+ *   |-----------------------
+ *          viewport mid
+ */
+export async function getLastBubbleMidpointDelta(page: Page) {
+  return page.evaluate(() => {
+    const bubbles = Array.from(
+      document.querySelectorAll("[data-testid='turn-bubble']"),
+    ) as HTMLElement[];
+
+    if (bubbles.length === 0) return null;
+
+    const last = bubbles[bubbles.length - 1];
+    const rect = last!.getBoundingClientRect();
+
+    const bubbleMid = rect.top + rect.height / 2;
+    const viewportMid = window.innerHeight / 2;
+
+    return Math.abs(bubbleMid - viewportMid);
+  });
 }
 </file>
 
@@ -1408,27 +1421,51 @@ export function MdxRenderer({ content }: { content: string }) {
   "turns": [
     {
       "speaker": "security_engineer",
-      "mdx": "## Assume breach, design for blast radius\n- mTLS on every hop\n- Per-service identity via SPIFFE\n- Deny-by-default egress via a proxy\nWhat happens when the noisiest service gets popped and the network is flat? Without uniform guardrails, lateral movement is trivial."
+      "mdx": "I keep picturing a pager at 3am: tokens stale, mesh rules mismatched, services silent. Zero trust is right, but fragile if half-rolled. We need clear boundaries and single sources of truth for identity and policy.\n\n```mermaid\nflowchart LR\nClient-->Gateway\nGateway-->AuthZ\nGateway-->SvcA\nAuthZ-->IDP\n```"
     },
     {
       "speaker": "application_engineer",
-      "mdx": "## We need velocity\nFull mesh + heavy policy on day one will kneecap devs. Latency, sidecars, cert churn.\n- JWT at the edge via gateway\n- mTLS only for critical paths first\n- Audit policies before enforce\nDo we really need uniform everywhere before we ship anything?"
+      "mdx": "I hear the pager fear. I also care about shipping and feedback loops. We can validate identity locally and still move fast. For dev flow, passing a token is easy:\n\n```bash\ncurl -H 'Authorization: Bearer $TOKEN' https://svc-a.internal/endpoint\n```\n\nShort tokens are reversible and fast to test."
     },
     {
       "speaker": "security_engineer",
-      "mdx": "## Weakest link, biggest blast\nYour plan leaves soft targets attackers pivot through. Partial zero trust is zero trust in name only.\n- Uniform mTLS cuts lateral paths\n- Consider eBPF node agents if sidecars hurt\nAssume compromise; minimize blast radius uniformly."
+      "mdx": "Local checks help, but trust needs enforcement at the data path. Sidecars and a policy engine reduce blast radius. Make auth decisions consistent and observable so we don't get divergent behavior across environments.\n\n```mermaid\nflowchart LR\nApp-->Sidecar\nSidecar-->mTLS\nSidecar-->OPA\nOPA-->CA\n```"
     },
     {
       "speaker": "application_engineer",
-      "mdx": "## Scope and stage, not stall\nI can accept uniform identity (SPIFFE), but keep authz coarse (RBAC) first. Canary enforcement, dev permissive, prod strict.\n```yaml\nallow: serviceA->serviceB if scope: orders\n```\nLet’s harden iteratively while we keep features moving."
+      "mdx": "Sidecars add ops overhead. Developers will resist if they have to write policies for every route. We should provide sane defaults and let teams opt-in for stricter rules. Example policy skeleton to start from:\n\n```yaml\nselector: 'svc-a'\nallow: ['svc-b']\nmethods: ['GET','POST']\n```"
     },
     {
       "speaker": "security_engineer",
-      "mdx": "## Non‑negotiables, with guardrails\n- Workload identity + mTLS by default\n- Deny‑by‑default east‑west\n- Egress allowlist with logged break‑glass\n```mermaid\nflowchart LR\nClient-->Gateway\nGateway-->A\nA-->Policy\nPolicy-->B\n```\nPut a policy engine on every hop; no silent bypass."
+      "mdx": "Defaults are good, but we must plan revocation and audit. Short-lived certs plus a revocation channel keeps compromised workloads limited. Also log decisions centrally so incident triage isn't guessing who accepted which token.\n\n```mermaid\nflowchart LR\nIDP-->Revoker\nRevoker-->Proxy\nProxy-->Service\nService-->Audit\n```"
     },
     {
       "speaker": "application_engineer",
-      "mdx": "## Deal—platform owns the pain\nI’ll take your must‑haves if the platform handles it:\n- Automated certs/rotation and golden sidecar or node agent\n- Policy templates, tests in pipeline, clear defaults\n- Escape hatch with SLO‑based review\nWe move fast, you get uniform guardrails. Tension stays healthy."
+      "mdx": "Agreed on logs and short certs. My worry: if we lock everything down too fast we slow feature work. Let's phase: adopt identity + audit first, then enforce authz on critical paths, then widen. Keep rollback simple and use feature flags for gating."
+    },
+    {
+      "speaker": "security_engineer",
+      "mdx": "Phased approach works if boundaries are strict. Identity isn't authorization. You still need fine-grained checks at ingress to sensitive services. Make it easy to add checks with middleware that fails closed by default, and surface test harnesses.\n\n```python\ndef authz_middleware(req):\n    token = req.headers.get('Authorization')\n    if not check(token, req.path):\n        return Response(status=403)\n    return next(req)\n```"
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "If middleware is boilerplate, generate it. Tooling is the sweet spot: SDKs, templates, and CI helpers that inject sidecar configs. Automate the repetitive stuff so teams adopt without reinventing.\n\n```mermaid\nflowchart LR\nCI-->Inject\nInject-->Cluster\nCluster-->App\n```"
+    },
+    {
+      "speaker": "security_engineer",
+      "mdx": "We also need SLOs and tracing for the auth path. Authz latency spikes can cascade. Track authz_latency, deny_rate, token_validation_errors. Alert on growth and add circuit breakers to avoid taking down dependent services during failures."
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "Operational controls make me happier. We still need runtime flexibility: feature toggles and gradual rollouts let us tighten rules without blocking customers. A simple flag file per-service is low friction:\n\n```yaml\nfeature_flags:\n  zero_trust_enforce: false\n  authz_strict: 'canary'\n```"
+    },
+    {
+      "speaker": "security_engineer",
+      "mdx": "Flags are useful, but they must default to safe states and be gated by canaries plus automated rollback. Also tie flags to audit logs and require approval for global flips. Otherwise a mis-set flag causes a broad outage at 3am."
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "Okay, here's a pragmatic plan: start with identity + central audit, scaffold middleware and SDKs, enable short-lived creds, and gate strict authz by canary + feature flag. We'll automate rollbacks and provide templates so devs don’t fight guardrails."
     }
   ]
 }
@@ -1633,116 +1670,6 @@ export function useDebateProjection() {
 }
 </file>
 
-<file path="src/hooks/useGradientProjection.ts">
-import { useEffect, useRef, useState } from "react";
-
-export function useGradientProjection(
-  scrollRef: React.RefObject<HTMLDivElement | null>,
-  layoutReady: boolean,
-  scrollOwner: "machineOwned" | "userOwned",
-  restoringRef: React.MutableRefObject<boolean>,
-  maxDistance: number = 400,
-) {
-  const [intensity, setIntensity] = useState(1);
-
-  const GRACE_MS = 200;
-
-  const graceUntilRef = useRef<number>(0);
-  const prevOwnerRef = useRef(scrollOwner);
-
-  const intensityRef = useRef(1);
-  const rafRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!layoutReady) return;
-
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const now = performance.now();
-
-    // Detect ownership transition
-    if (prevOwnerRef.current !== scrollOwner) {
-      if (scrollOwner === "userOwned") {
-        graceUntilRef.current = now + GRACE_MS;
-      }
-      prevOwnerRef.current = scrollOwner;
-    }
-
-    const lerpTo = (target: number, smoothing = 0.08) => {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-      }
-
-      const animate = () => {
-        const current = intensityRef.current;
-        const next = current + (target - current) * smoothing;
-
-        intensityRef.current = next;
-        setIntensity(next);
-
-        if (Math.abs(next - target) > 0.002) {
-          rafRef.current = requestAnimationFrame(animate);
-        } else {
-          intensityRef.current = target;
-          setIntensity(target);
-        }
-      };
-
-      rafRef.current = requestAnimationFrame(animate);
-    };
-
-    const update = () => {
-      const now = performance.now();
-
-      // 🔥 Machine override: snap to full intensity
-      if (scrollOwner === "machineOwned") {
-        if (rafRef.current) cancelAnimationFrame(rafRef.current);
-        intensityRef.current = 1;
-        setIntensity(1);
-        return;
-      }
-
-      // 🔥 Suppress fade during restore
-      if (restoringRef.current) {
-        if (rafRef.current) cancelAnimationFrame(rafRef.current);
-        intensityRef.current = 1;
-        setIntensity(1);
-        return;
-      }
-
-      // 🔥 Grace window after ownership change
-      if (now < graceUntilRef.current) {
-        if (rafRef.current) cancelAnimationFrame(rafRef.current);
-        intensityRef.current = 1;
-        setIntensity(1);
-        return;
-      }
-
-      // 🔥 Continuous geometric fade
-      const distance = el.scrollHeight - (el.scrollTop + el.clientHeight);
-
-      const normalized = Math.max(0, Math.min(distance / maxDistance, 1));
-
-      const target = 1 - normalized;
-
-      // Smoothly approach target
-      lerpTo(target);
-    };
-
-    update();
-    el.addEventListener("scroll", update, { passive: true });
-
-    return () => {
-      el.removeEventListener("scroll", update);
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, [layoutReady, scrollOwner, scrollRef, restoringRef, maxDistance]);
-
-  return { intensity };
-}
-</file>
-
 <file path="src/debateMachine.ts">
 // src/machines/debateMachine.ts
 import { setup, assign, fromPromise } from "xstate";
@@ -1884,6 +1811,13 @@ export const debateMachine = setup({
 });
 </file>
 
+<file path="test-results/.last-run.json">
+{
+  "status": "passed",
+  "failedTests": []
+}
+</file>
+
 <file path="flake.nix">
 {
   description = "Bun + Vite + Playwright + Pre-commit multi-platform dev shell";
@@ -1953,9 +1887,10 @@ import { z } from "zod";
    Constants
 ============================================================ */
 
-const MAX_MDX_LENGTH = 500; // Hard cap per turn (tight + demo-safe)
-const MAX_MERMAID_BLOCK_LENGTH = 300; // Diagram can never dominate the turn
-const MAX_TOPIC_LENGTH = 160; // Enough for specificity, prevents rambling
+// Balanced for 12 turns (keeps latency reasonable)
+const MAX_MDX_LENGTH = 850; // Slightly increased from 500
+const MAX_MERMAID_BLOCK_LENGTH = 350; // Small bump for clarity
+const MAX_TOPIC_LENGTH = 160;
 
 /* ============================================================
    Prompt Input
@@ -1985,18 +1920,16 @@ function validateMermaidBlocks(text: string) {
   if (!blocks) return true;
 
   return blocks.every((block) => {
-    // Size constraint
     if (block.length > MAX_MERMAID_BLOCK_LENGTH) return false;
 
-    // Must begin with flowchart LR
     if (!block.includes("flowchart LR")) return false;
 
-    // Basic forbidden constructs
     if (
       block.includes("click ") ||
       block.includes("classDef") ||
       block.includes("note over") ||
-      block.includes("sequenceDiagram")
+      block.includes("sequenceDiagram") ||
+      block.includes("subgraph")
     ) {
       return false;
     }
@@ -2011,7 +1944,6 @@ function validateMermaidBlocks(text: string) {
 
 export const TurnSchema = z.object({
   speaker: SpeakerSchema,
-
   mdx: z.string().min(1).max(MAX_MDX_LENGTH).refine(validateMermaidBlocks, {
     message: "Invalid or oversized mermaid diagram block",
   }),
@@ -2026,8 +1958,8 @@ export type Turn = z.infer<typeof TurnSchema>;
 export const DialogueSchema = z.object({
   topic: z.string().min(1).max(MAX_TOPIC_LENGTH),
 
-  // Tighten to match system prompt (6–10)
-  turns: z.array(TurnSchema).min(6).max(10),
+  // Exactly 12 turns for a strong visual + narrative arc
+  turns: z.array(TurnSchema).length(12),
 });
 
 export type Dialogue = z.infer<typeof DialogueSchema>;
@@ -2042,16 +1974,15 @@ function easeOutCubic(t: number) {
 
 export function useAutoScroll(
   scrollRef: React.RefObject<HTMLDivElement | null>,
-  blocksLength: number,
+  layoutVersion: number,
   scrollOwner: "machineOwned" | "userOwned",
   layoutReady: boolean,
 ) {
-  const prevLengthRef = useRef(blocksLength);
+  const prevVersionRef = useRef(layoutVersion);
   const pendingScrollRef = useRef(false);
   const restoringRef = useRef(false);
   const rafRef = useRef<number | null>(null);
 
-  // ✅ Avoid stale-closure issues inside rAF
   const ownerRef = useRef(scrollOwner);
   ownerRef.current = scrollOwner;
 
@@ -2068,11 +1999,11 @@ export function useAutoScroll(
     };
 
     /* ------------------------------------------------------------
-       Phase 1 — Detect Content Growth
+       Phase 1 — Detect New Stable Layout Cycle
     ------------------------------------------------------------ */
 
-    if (blocksLength !== prevLengthRef.current) {
-      prevLengthRef.current = blocksLength;
+    if (layoutVersion !== prevVersionRef.current) {
+      prevVersionRef.current = layoutVersion;
 
       if (scrollOwner === "machineOwned") {
         pendingScrollRef.current = true;
@@ -2080,7 +2011,7 @@ export function useAutoScroll(
     }
 
     /* ------------------------------------------------------------
-       Phase 2 — Execute Scroll
+       Phase 2 — Execute Scroll After Stable Commit
     ------------------------------------------------------------ */
 
     if (
@@ -2090,71 +2021,502 @@ export function useAutoScroll(
     ) {
       pendingScrollRef.current = false;
 
-      // Always cancel any prior animation before starting a new one
       cancel();
 
-      const start = el.scrollTop;
-
-      // ✅ Correct "bottom" scrollTop target
-      const target = Math.max(0, el.scrollHeight - el.clientHeight);
-
-      // Nothing to do
-      if (Math.abs(target - start) < 1) {
-        restoringRef.current = false;
-        return;
-      }
-
-      restoringRef.current = true;
-
       const isTest = import.meta.env.MODE === "test";
-      if (isTest) {
-        el.scrollTop = target;
-        restoringRef.current = false;
-        return;
+
+      // 🔥 Wait two frames for DOM + motion flush
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = requestAnimationFrame(() => {
+          const currentEl = scrollRef.current;
+          if (!currentEl || ownerRef.current !== "machineOwned") {
+            cancel();
+            return;
+          }
+
+          // 🔥 NEW: Prevent scroll cycle when no overflow exists
+          if (currentEl.scrollHeight <= currentEl.clientHeight) {
+            restoringRef.current = false;
+            return;
+          }
+
+          // 🔥 Recompute AFTER settle
+          const start = currentEl.scrollTop;
+          const target = Math.max(
+            0,
+            currentEl.scrollHeight - currentEl.clientHeight,
+          );
+
+          const distance = target - start;
+
+          if (Math.abs(distance) < 1) {
+            restoringRef.current = false;
+            return;
+          }
+
+          restoringRef.current = true;
+
+          if (isTest) {
+            currentEl.scrollTop = target;
+            restoringRef.current = false;
+            return;
+          }
+
+          const duration = 700;
+          const startTime = performance.now();
+
+          const animate = (now: number) => {
+            const elNow = scrollRef.current;
+            if (!elNow || ownerRef.current !== "machineOwned") {
+              cancel();
+              return;
+            }
+
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = easeOutCubic(progress);
+
+            elNow.scrollTop = start + distance * eased;
+
+            if (progress < 1) {
+              rafRef.current = requestAnimationFrame(animate);
+            } else {
+              elNow.scrollTop = target;
+              cancel();
+            }
+          };
+
+          rafRef.current = requestAnimationFrame(animate);
+        });
+      });
+    }
+
+    return () => cancel();
+  }, [layoutVersion, layoutReady, scrollOwner, scrollRef]);
+
+  return restoringRef;
+}
+</file>
+
+<file path="src/hooks/useGradientProjection.ts">
+import { useEffect, useRef, useState } from "react";
+
+export function useGradientProjection(
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  layoutReady: boolean,
+  scrollOwner: "machineOwned" | "userOwned",
+  restoringRef: React.MutableRefObject<boolean>,
+  maxDistance: number = 400,
+) {
+  const [intensity, setIntensity] = useState(1);
+
+  const GRACE_MS = 200;
+
+  const graceUntilRef = useRef<number>(0);
+  const prevOwnerRef = useRef(scrollOwner);
+
+  const intensityRef = useRef(1);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!layoutReady) return;
+
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const now = performance.now();
+
+    // Detect ownership transition
+    if (prevOwnerRef.current !== scrollOwner) {
+      if (scrollOwner === "userOwned") {
+        graceUntilRef.current = now + GRACE_MS;
+      }
+      prevOwnerRef.current = scrollOwner;
+    }
+
+    const lerpTo = (target: number, smoothing = 0.08) => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
       }
 
-      const duration = 700; // ms
-      const startTime = performance.now();
+      const animate = () => {
+        const current = intensityRef.current;
+        const next = current + (target - current) * smoothing;
 
-      const animate = (now: number) => {
-        const currentEl = scrollRef.current;
+        intensityRef.current = next;
+        setIntensity(next);
 
-        // If we lost the element, don't leave restoring stuck true
-        if (!currentEl) {
-          cancel();
-          return;
-        }
-
-        // Abort if ownership changed mid-animation
-        if (ownerRef.current !== "machineOwned") {
-          cancel();
-          return;
-        }
-
-        const elapsed = now - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        const eased = easeOutCubic(progress);
-
-        const next = start + (target - start) * eased;
-        currentEl.scrollTop = next;
-
-        if (progress < 1) {
+        if (Math.abs(next - target) > 0.002) {
           rafRef.current = requestAnimationFrame(animate);
         } else {
-          currentEl.scrollTop = target; // guarantee exact bottom
-          cancel();
+          intensityRef.current = target;
+          setIntensity(target);
         }
       };
 
       rafRef.current = requestAnimationFrame(animate);
+    };
+
+    const update = () => {
+      const now = performance.now();
+
+      // 🔥 Machine override: snap to full intensity
+      if (scrollOwner === "machineOwned") {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        intensityRef.current = 1;
+        setIntensity(1);
+        return;
+      }
+
+      // 🔥 Suppress fade during restore
+      if (restoringRef.current) {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        intensityRef.current = 1;
+        setIntensity(1);
+        return;
+      }
+
+      // 🔥 Grace window after ownership change
+      if (now < graceUntilRef.current) {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        intensityRef.current = 1;
+        setIntensity(1);
+        return;
+      }
+
+      // 🔥 Continuous geometric fade
+      const distance = el.scrollHeight - (el.scrollTop + el.clientHeight);
+
+      const normalized = Math.max(0, Math.min(distance / maxDistance, 1));
+
+      const target = 1 - normalized;
+
+      // Smoothly approach target
+      lerpTo(target);
+    };
+
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+
+    return () => {
+      el.removeEventListener("scroll", update);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [layoutReady, scrollOwner, scrollRef, restoringRef, maxDistance]);
+
+  return { intensity };
+}
+</file>
+
+<file path="server.ts">
+import { OpenAI } from "openai";
+import { zodTextFormat } from "openai/helpers/zod";
+import { PromptRequestSchema, DialogueSchema } from "./shared/schemas";
+import { mkdirSync, writeFileSync } from "fs";
+import { dirname } from "path";
+
+/* ============================================================
+   HTTP-Level Instrumentation
+============================================================ */
+
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  fetch: async (url, options) => {
+    const httpStart = performance.now();
+    console.log(`[http] → ${url}`);
+
+    const res = await fetch(url, options);
+
+    const httpDuration = performance.now() - httpStart;
+    console.log(
+      `[http] ← ${url} status=${res.status} duration=${Math.round(
+        httpDuration,
+      )}ms`,
+    );
+
+    return res;
+  },
+});
+
+/* ============================================================
+   System Prompt
+============================================================ */
+
+const SYSTEM = `
+  You generate a structured architectural debate between two engineer archetypes.
+
+  Return ONLY valid JSON that matches the provided schema exactly.
+
+  STRUCTURE
+  - topic: string
+  - turns: array of 12 objects
+      - speaker: "security_engineer" | "application_engineer"
+      - mdx: string (valid markdown)
+
+  CONVERSATION RULES
+  - EXACTLY 12 turns.
+  - First turn MUST be from "security_engineer".
+  - Speakers MUST strictly alternate.
+  - Each turn must directly respond to the previous one.
+  - Let them disagree naturally.
+  - They do not need to fully agree at the end.
+
+  STYLE
+  - Casual but thoughtful.
+  - Sounds like two experienced engineers talking it through.
+  - Avoid sounding like a design document.
+  - Keep sentences short and natural.
+  - No dramatic speeches.
+
+  VISUAL FORMAT
+
+  Across the 12 turns:
+
+  - Include at least 3 fenced mermaid diagrams.
+  - Include at least 3 fenced code blocks.
+  - Distribute them naturally (not clustered together).
+  - Only use them when they clarify a concrete example.
+
+  Do not include a diagram or code block in every turn.
+  Avoid decorative formatting.
+
+  MERMAID RULES
+  - Use fenced block with \`\`\`mermaid
+  - Must begin with: flowchart LR
+  - Max 6 nodes
+  - Max 8 edges
+  - No click directives
+  - No classDef
+  - No sequenceDiagram
+  - No subgraph
+
+  LENGTH
+  - 250–450 characters per turn.
+  - Keep ideas sharp and visual.
+  - Formatting should improve clarity.
+
+  PERSONAS
+
+  Security Engineer:
+  Has been burned before. Thinks about what breaks at 3am.
+  Worries about hidden edge cases and long-term mess.
+  Cares about guardrails, but doesn’t enjoy being the blocker.
+  Talks in plain language and uses simple diagrams when needed.
+  Sometimes feels like the boring one in the room.
+
+  Application Engineer:
+  Likes building things and getting feedback fast.
+  Thinks some risks are fine if they’re visible and reversible.
+  Cares about momentum and keeping systems flexible.
+  Talks through examples and practical trade-offs.
+  Gets frustrated when rules slow obvious progress.
+
+`.trim();
+
+/* ============================================================
+   Utilities
+============================================================ */
+
+function json(data: unknown, init?: ResponseInit) {
+  return new Response(JSON.stringify(data), {
+    headers: { "content-type": "application/json" },
+    ...init,
+  });
+}
+
+function writeFixture(dialogue: unknown) {
+  const path = "./src/fixtures/dialogue.json";
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(dialogue, null, 2), "utf-8");
+}
+
+function estimateTokens(text: string) {
+  return Math.ceil(text.length / 4);
+}
+
+function memorySnapshot() {
+  const mem = process.memoryUsage();
+  return {
+    rss_mb: Math.round(mem.rss / 1024 / 1024),
+    heap_used_mb: Math.round(mem.heapUsed / 1024 / 1024),
+    heap_total_mb: Math.round(mem.heapTotal / 1024 / 1024),
+  };
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
+/* ============================================================
+   Dialogue Handler
+============================================================ */
+
+async function handleDialogue(req: Request) {
+  const requestId = crypto.randomUUID();
+  const serverStart = performance.now();
+
+  console.log(`\n==============================`);
+  console.log(`[${requestId}] 📥 NEW REQUEST`);
+  console.log(`[${requestId}] memory_at_start=`, memorySnapshot());
+
+  const body = PromptRequestSchema.parse(await req.json());
+
+  console.log(`[${requestId}] topic="${body.prompt}"`);
+  console.log(`[${requestId}] prompt_chars=${body.prompt.length}`);
+  console.log(`[${requestId}] system_chars=${SYSTEM.length}`);
+
+  const approxInputTokens =
+    estimateTokens(SYSTEM) + estimateTokens(body.prompt);
+
+  console.log(`[${requestId}] approx_input_tokens=${approxInputTokens}`);
+
+  /* ------------------------------------------------------------
+     OpenAI Call
+  ------------------------------------------------------------ */
+
+  const openaiStart = performance.now();
+  console.log(`[${requestId}] 🚀 calling OpenAI`);
+
+  const openaiPromise = client.responses.parse({
+    model: "gpt-5-mini",
+    input: [
+      { role: "system", content: SYSTEM },
+      { role: "user", content: `Topic: ${body.prompt}` },
+    ],
+    text: {
+      format: zodTextFormat(DialogueSchema, "dialogue"),
+    },
+  });
+
+  type OpenAIResponse = Awaited<typeof openaiPromise>;
+
+  let response: OpenAIResponse;
+
+  try {
+    response = await withTimeout(openaiPromise, 90_000);
+  } catch (err) {
+    console.error(`[${requestId}] ❌ OpenAI call failed`);
+    console.error(err);
+    throw err;
+  }
+
+  const openaiDuration = performance.now() - openaiStart;
+
+  console.log(
+    `[${requestId}] ✅ OpenAI finished in ${Math.round(openaiDuration)}ms`,
+  );
+
+  if (openaiDuration > 8000) {
+    console.warn(
+      `[${requestId}] ⚠️ slow_openai_call=${Math.round(openaiDuration)}ms`,
+    );
+  }
+
+  /* ------------------------------------------------------------
+     Schema Validation
+  ------------------------------------------------------------ */
+
+  const schemaStart = performance.now();
+  const parsed = DialogueSchema.parse(response.output_parsed);
+  const schemaDuration = performance.now() - schemaStart;
+
+  console.log(
+    `[${requestId}] 🧠 schema_validation_ms=${Math.round(schemaDuration)}`,
+  );
+
+  /* ------------------------------------------------------------
+     Metrics
+  ------------------------------------------------------------ */
+
+  const usage = response.usage;
+
+  const perTurnStats = parsed.turns.map((t, i) => ({
+    index: i,
+    speaker: t.speaker,
+    chars: t.mdx.length,
+    approx_tokens: estimateTokens(t.mdx),
+    hasMermaid: t.mdx.includes("```mermaid"),
+    hasCodeBlock: t.mdx.includes("```") && !t.mdx.includes("```mermaid"),
+  }));
+
+  const totalDuration = performance.now() - serverStart;
+
+  console.log(
+    JSON.stringify(
+      {
+        requestId,
+        event: "openai_generation",
+        model: response.model,
+        timing: {
+          openai_ms: Math.round(openaiDuration),
+          schema_ms: Math.round(schemaDuration),
+          total_ms: Math.round(totalDuration),
+        },
+        tokens: {
+          input: usage?.input_tokens ?? null,
+          output: usage?.output_tokens ?? null,
+          total: usage?.total_tokens ?? null,
+        },
+        output_size_chars: JSON.stringify(parsed).length,
+        turns: parsed.turns.length,
+        avg_chars_per_turn: Math.round(
+          parsed.turns.reduce((a, t) => a + t.mdx.length, 0) /
+            parsed.turns.length,
+        ),
+        visual_counts: {
+          mermaid: perTurnStats.filter((t) => t.hasMermaid).length,
+          codeBlocks: perTurnStats.filter((t) => t.hasCodeBlock).length,
+        },
+        per_turn: perTurnStats,
+        memory_at_end: memorySnapshot(),
+      },
+      null,
+      2,
+    ),
+  );
+
+  writeFixture(parsed);
+
+  console.log(`[${requestId}] 🎉 COMPLETE`);
+  console.log(`==============================\n`);
+
+  return json(parsed);
+}
+
+/* ============================================================
+   Bun Server
+============================================================ */
+
+Bun.serve({
+  port: 3001,
+  async fetch(req) {
+    const url = new URL(req.url);
+
+    if (url.pathname === "/api/dialogue") {
+      if (req.method !== "POST") {
+        return new Response("Method Not Allowed", { status: 405 });
+      }
+
+      try {
+        return await handleDialogue(req);
+      } catch (e) {
+        console.error("🔥 SERVER ERROR:");
+        console.error(e);
+        return json(
+          { error: e instanceof Error ? e.message : String(e) },
+          { status: 400 },
+        );
+      }
     }
 
-    // ✅ Critical for StrictMode: cleanup must clear restoringRef
-    return () => cancel();
-  }, [blocksLength, layoutReady, scrollOwner, scrollRef]);
-
-  return restoringRef;
-}
+    return new Response("Not Found", { status: 404 });
+  },
+});
 </file>
 
 <file path="src/hooks/useScrollOwnership.ts">
@@ -2312,164 +2674,6 @@ export function useScrollOwnership(
 
   return isUserScrollingUp;
 }
-</file>
-
-<file path="server.ts">
-import { OpenAI } from "openai";
-import { zodTextFormat } from "openai/helpers/zod";
-import { PromptRequestSchema, DialogueSchema } from "./shared/schemas";
-import { mkdirSync, writeFileSync } from "fs";
-import { dirname } from "path";
-
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-const SYSTEM = `
-You generate a structured architectural debate between two engineer archetypes.
-
-Return JSON that matches the provided schema exactly.
-
-STRUCTURE:
-- topic: string
-- turns: array of objects
-    - speaker: "security_engineer" | "application_engineer"
-    - mdx: string (valid markdown / MDX content)
-
-CONVERSATION RULES:
-- The first turn must be from "security_engineer".
-- Speakers must strictly alternate.
-- Each speaker must contribute 3–4 turns.
-- Total turns: 6–8.
-- The debate must include real disagreement and visible trade-offs.
-- Avoid generic agreement or polite convergence too early.
-
-CONTENT RULES:
-- The "mdx" field must contain valid markdown.
-- Allowed constructs:
-    - short paragraphs
-    - bullet lists (max 3 per turn)
-    - headings
-    - fenced code blocks
-    - fenced mermaid diagrams
-- Do not include markdown fences outside the mdx string.
-- Do not include commentary outside the JSON response.
-- Do not include extra keys.
-
-RESPONSE LENGTH RULES:
-- Each turn must be under 500 characters.
-- Keep ideas focused and tight.
-- Avoid dense implementation detail unless directly relevant.
-- Formatting (headings, bullets, diagrams) is encouraged — but must improve clarity, not increase length.
-
-MERMAID RULES:
-- Use fenced code block with language "mermaid".
-- Must begin with: flowchart LR
-- Keep diagrams minimal (≤6 nodes, ≤8 edges).
-- No nested subgraphs.
-- Do not use:
-    - click directives
-    - classDef
-    - note over
-    - sequenceDiagram
-
-STYLE AND TONE:
-
-- Write like two senior engineers debating at a whiteboard.
-- Conversational, sharp, and opinionated.
-- Avoid sounding like a design document or compliance checklist.
-- Use MDX formatting creatively to make ideas visually clear.
-- Avoid long, dense bullet lists.
-- Avoid stacking acronyms (max 2 per turn unless essential).
-
-DIALOGUE DYNAMICS:
-
-- Each turn must directly respond to the previous turn.
-- Maintain tension; do not converge too quickly.
-- Make the philosophical difference clear.
-- The final turn may propose compromise, but preserve worldview contrast.
-
-CHARACTERIZATION:
-
-Security Engineer:
-- Thinks in terms of blast radius and worst-case scenarios.
-- Pushes for principled, uniform guardrails.
-- Often asks “what happens when…” or says “assume compromise.”
-
-Application Engineer:
-- Thinks in terms of velocity and developer experience.
-- Pushes for incremental, pragmatic solutions.
-- Often asks “can we…” or “do we really need…”
-`.trim();
-
-function json(data: unknown, init?: ResponseInit) {
-  return new Response(JSON.stringify(data), {
-    headers: { "content-type": "application/json" },
-    ...init,
-  });
-}
-
-function writeFixture(dialogue: unknown) {
-  const path = "./src/fixtures/dialogue.json";
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(dialogue, null, 2), "utf-8");
-}
-
-async function handleDialogue(req: Request) {
-  const body = PromptRequestSchema.parse(await req.json());
-
-  const start = performance.now();
-
-  const response = await client.responses.parse({
-    model: "gpt-5",
-    input: [
-      { role: "system", content: SYSTEM },
-      { role: "user", content: `Topic: ${body.prompt}` },
-    ],
-    text: {
-      format: zodTextFormat(DialogueSchema, "dialogue"),
-    },
-  });
-
-  const duration = performance.now() - start;
-
-  const parsed = DialogueSchema.parse(response.output_parsed);
-
-  // Minimal but useful logging
-  console.log(
-    `[openai] model=${response.model} ` +
-      `latency=${duration.toFixed(0)}ms ` +
-      `tokens=${response.usage?.total_tokens ?? "?"}`,
-  );
-
-  writeFixture(parsed);
-
-  return json(parsed);
-}
-
-Bun.serve({
-  port: 3001,
-  async fetch(req) {
-    const url = new URL(req.url);
-
-    if (url.pathname === "/api/dialogue") {
-      if (req.method !== "POST") {
-        return new Response("Method Not Allowed", { status: 405 });
-      }
-
-      try {
-        return await handleDialogue(req);
-      } catch (e) {
-        return json(
-          { error: e instanceof Error ? e.message : String(e) },
-          { status: 400 },
-        );
-      }
-    }
-
-    return new Response("Not Found", { status: 404 });
-  },
-});
 </file>
 
 <file path="tests/scroll.spec.ts">
@@ -2792,10 +2996,10 @@ export function App({ inspector }: { inspector?: any }) {
   const lastBlock = blocks[blocks.length - 1];
   const lastHeight = lastBlock?.height ?? 0;
 
-  const spacerHeight = Math.max(
-    0,
-    Math.floor((viewportHeight - lastHeight) / 2),
-  );
+  const spacerHeight =
+    lastBlock?.height != null
+      ? Math.max(0, Math.floor((viewportHeight - lastBlock.height) / 2))
+      : 0;
 
   /* ------------------------------------------------------------
      Scroll Ownership
@@ -3026,7 +3230,12 @@ function MeasuredBubble({
       <MotionBox
         data-testid="turn-bubble"
         ref={ref}
-        transition={{ duration: 0.4, ease: "easeOut" }}
+        initial={{ opacity: 0, y: 20, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{
+          duration: 0.6,
+          ease: [0.22, 1, 0.36, 1], // smooth spring-like curve
+        }}
         width="70vw"
         maxW="1100px"
         fontSize="18px"
