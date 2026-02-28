@@ -26,14 +26,16 @@ export function App({ inspector }: { inspector?: any }) {
      Layout Stabilization
   ------------------------------------------------------------ */
 
-  const { ready: layoutReady } = useLayoutStable(scrollRef, blocks);
+  // 🔥 IMPORTANT: capture version, not just ready
+  const { ready: layoutReady, version: layoutVersion } = useLayoutStable(
+    scrollRef,
+    blocks,
+  );
 
   const { observerRef, observerMetrics } = useObserverAnchor(
     scrollRef,
     layoutReady,
   );
-
-  const { intensity } = useGradientProjection(observerMetrics, layoutReady);
 
   /* ------------------------------------------------------------
      Viewport Geometry
@@ -57,11 +59,18 @@ export function App({ inspector }: { inspector?: any }) {
       ? state.value.scroll
       : "machineOwned";
 
+  // 🔥 Trigger auto-scroll on layoutVersion change
   const restoringRef = useAutoScroll(
     scrollRef,
-    blocks.length,
+    layoutVersion,
     scrollOwner,
     layoutReady,
+  );
+
+  const { intensity } = useGradientProjection(
+    observerMetrics,
+    layoutReady,
+    scrollOwner,
   );
 
   useScrollOwnership(send, scrollRef, restoringRef);
@@ -126,7 +135,7 @@ export function App({ inspector }: { inspector?: any }) {
           overflowY="auto"
           data-testid="scroll-viewport"
           data-layout-ready={layoutReady ? "true" : "false"}
-          data-scroll-owner={state.value.scroll}
+          data-scroll-owner={scrollOwner}
         >
           <Box>
             {/* Symmetric Top Spacer */}
@@ -158,13 +167,15 @@ export function App({ inspector }: { inspector?: any }) {
           bottom="0"
           left="0"
           right="0"
-          height="44px"
+          height="90px" // taller
           bg={`linear-gradient(
             to top,
-            rgba(120,170,255, ${0.32 * intensity}) 0%,
-            rgba(120,170,255, ${0.18 * intensity}) 55%,
+            rgba(120,170,255, ${0.18 * intensity}) 0%,
+            rgba(120,170,255, ${0.1 * intensity}) 35%,
+            rgba(120,170,255, ${0.05 * intensity}) 65%,
             rgba(120,170,255, 0) 100%
           )`}
+          transition="opacity 200ms ease"
         />
       </Box>
     </Box>

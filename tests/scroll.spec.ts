@@ -123,12 +123,26 @@ test("manual scroll up transitions to userOwned", async ({ page }) => {
   await appendTurns(page, 8);
   await scrollToBottom(page);
 
+  // Sanity check: we start machineOwned
+  await expect.poll(() => getScrollOwner(page)).toBe("machineOwned");
+
   // Simulate user scrolling upward
   await manualScroll(page, -600);
 
+  // 🔎 First assert geometry changed
+  const notAtBottom = await page.evaluate(() => {
+    const el = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    return el.scrollTop + el.clientHeight < el.scrollHeight - 5;
+  });
+
+  expect(notAtBottom).toBeTruthy();
+
+  // 🔎 Then assert state transition
   await expect.poll(() => getScrollOwner(page)).toBe("userOwned");
 });
-
 /* ------------------------------------------------------------
    Return to Bottom → machineOwned
 ------------------------------------------------------------ */

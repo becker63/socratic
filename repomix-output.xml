@@ -55,6 +55,7 @@ src/
     useLayoutStable.ts
     useObserverAnchor.ts
     useScrollOwnership.ts
+    useViewportHeight.ts
   types/
     socratic-global.d.ts
   App.tsx
@@ -64,9 +65,16 @@ src/
   replay.ts
   testBridge.ts
 test-results/
+  scroll.stability-gradient--f2da8-cker-off-during-auto-follow/
+    error-context.md
   .last-run.json
 tests/
+  utils/
+    scrollTestUtils.ts
+  scroll-centering.spec.ts
+  scroll-visibility.spec.ts
   scroll.spec.ts
+  scroll.stability.spec.ts
 .gitignore
 flake.lock
 flake.nix
@@ -81,6 +89,235 @@ vite.config.ts
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="test-results/scroll.stability-gradient--f2da8-cker-off-during-auto-follow/error-context.md">
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - textbox "Zero trust in microservices…" [ref=e5]: Zero trust in microservices
+    - button "Generate" [ref=e6] [cursor=pointer]
+    - button "Replay" [disabled] [ref=e7]
+  - generic [ref=e10]:
+    - generic [ref=e15]:
+      - paragraph [ref=e16]: Security Engineer
+      - generic [ref=e18]:
+        - paragraph [ref=e19]: Turn 0
+        - paragraph [ref=e20]: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    - generic [ref=e26]:
+      - paragraph [ref=e27]: Application Engineer
+      - generic [ref=e29]:
+        - paragraph [ref=e30]: Turn 1
+        - paragraph [ref=e31]: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    - generic [ref=e35]:
+      - paragraph [ref=e36]: Security Engineer
+      - generic [ref=e38]:
+        - paragraph [ref=e39]: Turn 2
+        - paragraph [ref=e40]: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    - generic [ref=e46]:
+      - paragraph [ref=e47]: Application Engineer
+      - generic [ref=e49]:
+        - paragraph [ref=e50]: Turn 3
+        - paragraph [ref=e51]: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    - generic [ref=e55]:
+      - paragraph [ref=e56]: Security Engineer
+      - generic [ref=e58]:
+        - paragraph [ref=e59]: Turn 4
+        - paragraph [ref=e60]: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    - generic [ref=e66]:
+      - paragraph [ref=e67]: Application Engineer
+      - generic [ref=e69]:
+        - paragraph [ref=e70]: Turn 5
+        - paragraph [ref=e71]: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+```
+</file>
+
+<file path="tests/scroll.stability.spec.ts">
+import { test, expect, type Page } from "@playwright/test";
+import {
+  waitForAppReady,
+  appendTurns,
+  getScrollOwner,
+  isPhysicallyAtBottom,
+} from "./utils/scrollTestUtils";
+
+/* ============================================================
+   Types
+============================================================ */
+
+type Sample = {
+  scrollTop: number;
+  scrollHeight: number;
+  owner: string | null;
+  intensity: number;
+};
+
+/* ============================================================
+   Frame Sampler (Deterministic)
+============================================================ */
+
+async function sampleFrames(
+  page: Page,
+  frames: number = 100,
+  intervalMs: number = 10,
+): Promise<Sample[]> {
+  return page.evaluate(
+    async ({ frameCount, interval }) => {
+      const el = document.querySelector(
+        "[data-testid='scroll-viewport']",
+      ) as HTMLElement | null;
+
+      const grad = document.querySelector(
+        "[data-testid='background-gradient']",
+      ) as HTMLElement | null;
+
+      if (!el) throw new Error("scroll-viewport not found");
+      if (!grad) throw new Error("background-gradient not found");
+
+      const samples: Sample[] = [];
+
+      for (let i = 0; i < frameCount; i++) {
+        await new Promise<void>((resolve) => setTimeout(resolve, interval));
+
+        samples.push({
+          scrollTop: el.scrollTop,
+          scrollHeight: el.scrollHeight,
+          owner: el.getAttribute("data-scroll-owner"),
+          intensity: parseFloat(grad.getAttribute("data-intensity") ?? "0"),
+        });
+      }
+
+      return samples;
+    },
+    { frameCount: frames, interval: intervalMs },
+  );
+}
+
+/* ============================================================
+   1️⃣ Scroll Monotonicity
+============================================================ */
+
+test("auto-scroll is monotonic", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await appendTurns(page, 6);
+
+  const samples = await sampleFrames(page);
+
+  expect(samples.length).toBeGreaterThan(1);
+
+  for (let i = 1; i < samples.length; i++) {
+    const prev = samples[i - 1]!;
+    const curr = samples[i]!;
+
+    expect(curr.scrollTop).toBeGreaterThanOrEqual(prev.scrollTop - 2);
+  }
+});
+
+/* ============================================================
+   2️⃣ Ownership Stability
+============================================================ */
+
+test("machine ownership does not flip during auto-follow", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await appendTurns(page, 6);
+
+  const samples = await sampleFrames(page);
+
+  const owners = new Set(samples.map((s) => s.owner));
+  expect(owners).toEqual(new Set(["machineOwned"]));
+});
+
+/* ============================================================
+   3️⃣ Gradient Stability
+============================================================ */
+
+test("gradient does not flicker off during auto-follow", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await appendTurns(page, 6);
+
+  const samples = await sampleFrames(page);
+
+  const intensities = samples.map((s) => s.intensity);
+
+  const min = Math.min(...intensities);
+  const max = Math.max(...intensities);
+
+  expect(max).toBeGreaterThan(0.05);
+  expect(min).toBeGreaterThan(0);
+});
+
+/* ============================================================
+   4️⃣ Layout Stabilization
+============================================================ */
+
+test("scrollHeight stabilizes quickly", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await appendTurns(page, 6);
+
+  const samples = await sampleFrames(page);
+
+  let heightChanges = 0;
+
+  for (let i = 1; i < samples.length; i++) {
+    const prev = samples[i - 1]!;
+    const curr = samples[i]!;
+
+    if (Math.abs(curr.scrollHeight - prev.scrollHeight) > 5) {
+      heightChanges++;
+    }
+  }
+
+  expect(heightChanges).toBeLessThan(3);
+});
+
+/* ============================================================
+   5️⃣ End State Contract
+============================================================ */
+
+test("auto-follow ends at bottom and machineOwned", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await appendTurns(page, 6);
+
+  await expect.poll(() => isPhysicallyAtBottom(page)).toBeTruthy();
+  await expect.poll(() => getScrollOwner(page)).toBe("machineOwned");
+});
+</file>
+
+<file path="src/hooks/useViewportHeight.ts">
+import { useEffect, useState } from "react";
+
+export function useViewportHeight(
+  scrollRef: React.RefObject<HTMLElement | null>,
+) {
+  const [height, setHeight] = useState(0);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const update = () => setHeight(el.clientHeight);
+
+    update();
+
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [scrollRef]);
+
+  return height;
+}
+</file>
 
 <file path="src/types/socratic-global.d.ts">
 import type { SocraticBridge } from "../testBridge";
@@ -117,9 +354,421 @@ export const bus = mitt<Events>();
 
 <file path="test-results/.last-run.json">
 {
-  "status": "passed",
-  "failedTests": []
+  "status": "failed",
+  "failedTests": [
+    "814c1f12c2d091236ce7-879930acaa9fb9613fab"
+  ]
 }
+</file>
+
+<file path="tests/utils/scrollTestUtils.ts">
+import type { Page } from "@playwright/test";
+import type { Turn } from "../../shared/schemas";
+
+/* ============================================================
+   Scroll Test Utilities
+
+   These helpers are shared across:
+
+   - scroll.spec.ts
+   - scroll-centering.spec.ts
+
+   They intentionally abstract DOM plumbing so tests
+   read like behavioral specifications instead of
+   browser scripting.
+============================================================ */
+
+/* ------------------------------------------------------------
+   Turn Factory
+------------------------------------------------------------ */
+
+/**
+ * Creates a tall turn so that scrolling is meaningful.
+ *
+ * Each turn contains enough repeated text to produce
+ * vertical overflow in the scroll container.
+ *
+ * This guarantees:
+ * - scrollHeight > clientHeight
+ * - scrolling physics are observable
+ */
+export function turn(i: number): Turn {
+  return {
+    speaker: i % 2 === 0 ? "security_engineer" : "application_engineer",
+    mdx: `Turn ${i}\n\n` + "word ".repeat(200),
+  };
+}
+
+/* ------------------------------------------------------------
+   App Readiness
+------------------------------------------------------------ */
+
+/**
+ * Waits until:
+ *
+ * 1) The test bridge is installed (window.__socratic exists)
+ * 2) The scroll viewport is mounted in the DOM
+ *
+ * This prevents race conditions where:
+ * - React has not mounted yet
+ * - The machine has not initialized
+ */
+export async function waitForAppReady(page: Page) {
+  await page.waitForFunction(() => !!window.__socratic);
+  await page.waitForSelector("[data-testid='scroll-viewport']");
+}
+
+/* ------------------------------------------------------------
+   Content Growth
+------------------------------------------------------------ */
+
+/**
+ * Emits APPEND_TURN events through the test bridge.
+ *
+ * This simulates replay-driven content growth
+ * without invoking the actual replay actor timing.
+ *
+ * We intentionally bypass delay mechanics
+ * so tests run deterministically.
+ */
+export async function appendTurns(page: Page, count: number) {
+  for (let i = 0; i < count; i++) {
+    await page.evaluate((payload: Turn) => {
+      window.__socratic?.emit("APPEND_TURN", payload);
+    }, turn(i));
+  }
+}
+
+/* ------------------------------------------------------------
+   Manual Scroll Simulation
+------------------------------------------------------------ */
+
+/**
+ * Simulates a user scroll by:
+ *
+ * 1) Mutating scrollTop
+ * 2) Manually dispatching a scroll event
+ *
+ * Why dispatch?
+ * Because ownership logic listens to the scroll event,
+ * not scrollTop mutation alone.
+ */
+export async function manualScroll(page: Page, delta: number) {
+  await page.evaluate((amount) => {
+    const el = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    el.scrollTop += amount;
+    el.dispatchEvent(new Event("scroll"));
+  }, delta);
+}
+
+/**
+ * Force scroll to bottom.
+ *
+ * Used to simulate a user returning control to the machine.
+ *
+ * Equivalent invariant:
+ *   scrollTop + clientHeight ≈ scrollHeight
+ */
+export async function scrollToBottom(page: Page) {
+  await page.evaluate(() => {
+    const el = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    el.scrollTop = el.scrollHeight;
+    el.dispatchEvent(new Event("scroll"));
+  });
+}
+
+/* ------------------------------------------------------------
+   Ownership Introspection
+------------------------------------------------------------ */
+
+/**
+ * Reads scroll ownership from DOM attribute.
+ *
+ * This reflects XState's parallel "scroll" region.
+ *
+ * We intentionally assert via DOM rather than machine snapshot
+ * so tests validate actual UI integration.
+ */
+export async function getScrollOwner(page: Page) {
+  return page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner");
+}
+
+/* ------------------------------------------------------------
+   Physical Scroll Geometry
+------------------------------------------------------------ */
+
+/**
+ * Determines whether the viewport is physically at bottom.
+ *
+ * Geometry:
+ *
+ *   scrollTop      → distance from top
+ *   clientHeight   → viewport height
+ *   scrollHeight   → total content height
+ *
+ * Bottom invariant:
+ *
+ *   scrollTop + clientHeight ≈ scrollHeight
+ *
+ * Due to subpixel rounding and layout jitter,
+ * we allow a tolerance of 5px.
+ */
+export async function isPhysicallyAtBottom(page: Page) {
+  return page.evaluate(() => {
+    const el = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    const bottomEdge = el.scrollTop + el.clientHeight;
+    const contentBottom = el.scrollHeight;
+
+    return bottomEdge >= contentBottom - 5;
+  });
+}
+
+/* ------------------------------------------------------------
+   Centering Geometry (New Invariant)
+------------------------------------------------------------ */
+
+/**
+ * Measures how far the newest bubble midpoint
+ * deviates from viewport midpoint.
+ *
+ * Used to validate centering behavior.
+ *
+ * Invariant:
+ *
+ *   abs(bubbleMid - viewportMid) < tolerance
+ *
+ * ASCII sketch:
+ *
+ *   | viewport top
+ *   |
+ *   |     [ last bubble ]
+ *   |         *
+ *   |         | midpoint
+ *   |
+ *   |-----------------------
+ *          viewport mid
+ */
+export async function getLastBubbleMidpointDelta(page: Page) {
+  return page.evaluate(() => {
+    const bubbles = Array.from(
+      document.querySelectorAll("[data-testid='turn-bubble']"),
+    ) as HTMLElement[];
+
+    if (bubbles.length === 0) return null;
+
+    const last = bubbles[bubbles.length - 1];
+    const rect = last!.getBoundingClientRect();
+
+    const bubbleMid = rect.top + rect.height / 2;
+    const viewportMid = window.innerHeight / 2;
+
+    return Math.abs(bubbleMid - viewportMid);
+  });
+}
+</file>
+
+<file path="tests/scroll-centering.spec.ts">
+import { test, expect } from "@playwright/test";
+import {
+  waitForAppReady,
+  appendTurns,
+  getScrollOwner,
+} from "./utils/scrollTestUtils";
+
+/* ============================================================
+   Scroll Centering E2E Tests (Instrumented)
+
+   Validates geometric invariant:
+
+   When machineOwned and content is appended,
+   the newest block must be vertically centered
+   inside the SCROLL VIEWPORT.
+
+   This version logs full layout geometry so we
+   can reason numerically instead of guessing.
+============================================================ */
+
+test.beforeEach(async ({ page }) => {
+  page.on("console", (msg) => {
+    console.log(`[browser:${msg.type()}]`, msg.text());
+  });
+});
+
+test("machineOwned centers newest block after append", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+
+  await appendTurns(page, 8);
+
+  await expect.poll(() => getScrollOwner(page)).toBe("machineOwned");
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const el = document.querySelector(
+          "[data-testid='scroll-viewport']",
+        ) as HTMLElement;
+        return el.scrollTop;
+      });
+    })
+    .not.toBe(0);
+
+  const geometry = await page.evaluate(() => {
+    const viewport = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    const bubbles = Array.from(
+      document.querySelectorAll("[data-testid='turn-bubble']"),
+    ) as HTMLElement[];
+
+    const spacer = document.querySelector(
+      "[data-testid='bottom-spacer']",
+    ) as HTMLElement | null;
+
+    const observer = document.querySelector(
+      "[data-testid='observer-anchor']",
+    ) as HTMLElement | null;
+
+    if (!viewport || bubbles.length === 0) {
+      return { error: "Missing viewport or bubbles" };
+    }
+
+    const last = bubbles[bubbles.length - 1];
+
+    const bubbleRect = last!.getBoundingClientRect();
+    const viewportRect = viewport.getBoundingClientRect();
+
+    const bubbleMid = bubbleRect.top + bubbleRect.height / 2;
+
+    const viewportMid = viewportRect.top + viewport.clientHeight / 2;
+
+    return {
+      viewport: {
+        clientHeight: viewport.clientHeight,
+        scrollHeight: viewport.scrollHeight,
+        scrollTop: viewport.scrollTop,
+        rectTop: viewportRect.top,
+        rectBottom: viewportRect.bottom,
+      },
+      window: {
+        innerHeight: window.innerHeight,
+      },
+      bubble: {
+        top: bubbleRect.top,
+        height: bubbleRect.height,
+        bottom: bubbleRect.bottom,
+        midpoint: bubbleMid,
+      },
+      computed: {
+        viewportMid,
+        delta: Math.abs(bubbleMid - viewportMid),
+      },
+      spacer: spacer
+        ? {
+            height: spacer.getBoundingClientRect().height,
+          }
+        : null,
+      observer: observer
+        ? {
+            top: observer.getBoundingClientRect().top,
+          }
+        : null,
+      bubbleCount: bubbles.length,
+    };
+  });
+
+  console.log("\n===== GEOMETRY SNAPSHOT =====");
+  console.log(JSON.stringify(geometry, null, 2));
+  console.log("================================\n");
+
+  if ((geometry as any).error) {
+    throw new Error((geometry as any).error);
+  }
+
+  expect((geometry as any).computed.delta).toBeLessThan(8);
+});
+</file>
+
+<file path="tests/scroll-visibility.spec.ts">
+import { test, expect } from "@playwright/test";
+import {
+  waitForAppReady,
+  appendTurns,
+  getScrollOwner,
+} from "./utils/scrollTestUtils";
+
+test.beforeEach(async ({ page }) => {
+  page.on("console", (msg) => {
+    console.log(`[browser:${msg.type()}]`, msg.text());
+  });
+});
+
+test("machineOwned ensures last bubble is fully visible", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+
+  await appendTurns(page, 8);
+
+  await expect.poll(() => getScrollOwner(page)).toBe("machineOwned");
+
+  // 🔥 Wait until scroll is actually at bottom
+  await expect
+    .poll(async () => {
+      return await page.evaluate(() => {
+        const viewport = document.querySelector(
+          '[data-testid="scroll-viewport"]',
+        ) as HTMLElement;
+
+        return Math.abs(
+          viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight,
+        );
+      });
+    })
+    .toBeLessThan(5);
+
+  const visibility = await page.evaluate(() => {
+    const viewport = document.querySelector(
+      '[data-testid="scroll-viewport"]',
+    ) as HTMLElement;
+
+    const bubbles = document.querySelectorAll('[data-testid="turn-bubble"]');
+
+    const last = bubbles[bubbles.length - 1] as HTMLElement;
+
+    const viewportRect = viewport.getBoundingClientRect();
+    const bubbleRect = last.getBoundingClientRect();
+
+    return {
+      viewport: {
+        top: viewportRect.top,
+        bottom: viewportRect.bottom,
+      },
+      bubble: {
+        top: bubbleRect.top,
+        bottom: bubbleRect.bottom,
+      },
+      fullyVisible:
+        bubbleRect.top >= viewportRect.top &&
+        bubbleRect.bottom <= viewportRect.bottom,
+    };
+  });
+
+  console.log("\n===== VISIBILITY SNAPSHOT =====");
+  console.log(JSON.stringify(visibility, null, 2));
+  console.log("================================\n");
+
+  expect(visibility.fullyVisible).toBe(true);
+});
 </file>
 
 <file path=".gitignore">
@@ -220,221 +869,88 @@ export default defineConfig({
   "turns": [
     {
       "speaker": "security_engineer",
-      "mdx": "We should adopt a strict zero-trust posture for east‑west traffic using workload identities (SPIFFE), mTLS between sidecars, and OPA for fine‑grained policy enforcement.\n\nKey points:\n\n- Authenticate by identity, not network: SPIFFE SVIDs issued by SPIRE; short‑lived X.509 (or JWT‑SVID) for revocation-free rotation.\n- Encrypt and authorize at the edge of the workload: Envoy/sidecar mTLS, Envoy RBAC + OPA as an external authorizer.\n- Deny‑by‑default RBAC and attribute‑based policies (OPA/Rego) for sensitive calls (database, secrets manager).\n- Rollout strategy: permissive mTLS -> canary (5–25%) -> all, and use chaos engineering to verify cert expiry recovery paths.\n\nConcrete failure cases to prepare for:\n\n- SPIRE control plane compromise: have offline root CA and automated rotation playbooks.\n- Certificate expiry or network partition: use permissive mode with strict audit for short windows and automatic restart/renewal agents.\n\nI expect pushback on complexity and latency; I’ll address trade‑offs if you outline those concerns."
+      "mdx": "## Assume breach, design for blast radius\n- mTLS on every hop\n- Per-service identity via SPIFFE\n- Deny-by-default egress via a proxy\nWhat happens when the noisiest service gets popped and the network is flat? Without uniform guardrails, lateral movement is trivial."
     },
     {
       "speaker": "application_engineer",
-      "mdx": "I agree with identity‑first goals, but I push back on mandatory sidecars + Envoy for every service because of operational and performance costs.\n\nProblems I see:\n\n- CPU and latency: Envoy sidecars add p99 tail latency and ~5–15% CPU overhead in polyglot fleets.\n- Integration friction: not every runtime team can embed SPIFFE SDKs; sidecars can be heavy for small services (FaaS/edge devices).\n- Centralized OPA policies become deployment coupling: a policy change can break many services and slow down releases.\n\nA pragmatic alternative I propose:\n\n- North‑south: API gateway enforces strong auth (JWT introspection, rate limiting, WAF). Use token caches and introspection caching.\n- East‑west hybrid: critical services use SPIFFE mTLS; noncritical internal calls use signed JWTs with short TTL + local verification.\n- Gradual rollout: start gateway + JWTs, then progressively onboard service mesh for high‑risk paths.\n\nI want to see concrete latency measurements and rollout knobs before committing cluster‑wide sidecars."
+      "mdx": "## We need velocity\nFull mesh + heavy policy on day one will kneecap devs. Latency, sidecars, cert churn.\n- JWT at the edge via gateway\n- mTLS only for critical paths first\n- Audit policies before enforce\nDo we really need uniform everywhere before we ship anything?"
     },
     {
       "speaker": "security_engineer",
-      "mdx": "Good points — latency and operational burden are real. Still, JWTs and gateway‑only enforcement have concrete attack windows:\n\n- Replay and revocation: long‑lived JWTs are hard to revoke; token introspection adds central dependency and latency spikes.\n- Gateway compromise: a single compromised ingress gateway could mint or forward tokens to east‑west paths if we rely on gateway trust alone.\n\nHow we mitigate while addressing your concerns:\n\n- Use SPIFFE short‑lived SVIDs (X.509 or JWT‑SVID). TTLs of 10–30 minutes eliminate long revocation windows and avoid introspection for every call.\n- Reduce sidecar overhead: leverage eBPF or kernel bypass (Envoy’s XDP/AF_XDP or gVisor bypass patterns) for hot paths; restrict full proxy to critical services.\n- Rollout concretely:\n  - Phase 1: deploy SPIRE server + agents on control plane nodes; run Envoy in permissive mode (mTLS verified but not required) for 2 weeks.\n  - Phase 2: canary 5% of services with enforced mTLS and OPA policies; monitor p99 auth latency, CPU delta, and error rate.\n  - Phase 3: expand by risk category.\n\nFailure/callback plan:\n\n- If SPIRE unavailable, agents continue serving cached SVIDs until expiry; set TTLs short but long enough to survive brief outages (e.g., 15m).\n- For wider outages, auto‑rollback to permissive with strict logging and alerts, not fail‑open permanently."
+      "mdx": "## Weakest link, biggest blast\nYour plan leaves soft targets attackers pivot through. Partial zero trust is zero trust in name only.\n- Uniform mTLS cuts lateral paths\n- Consider eBPF node agents if sidecars hurt\nAssume compromise; minimize blast radius uniformly."
     },
     {
       "speaker": "application_engineer",
-      "mdx": "Accepting JWT replay concerns and the SPIFFE short‑lived solution helps. Still, the devil is in operational details and developer velocity.\n\nOperational trade‑offs I want addressed before full adoption:\n\n- SDK vs sidecar: SDKs avoid heavy sidecars but create language‑specific maintenance across many teams. Sidecars centralize complexity but hurt resource budgets.\n- Observability/perf KPIs: we need concrete thresholds before canary expansion (acceptable p99 increase, CPU budget per pod, memory).\n- Policy ownership: OPA as a centralized policy store needs guardrails (policy review workflow, testing harnesses).\n\nProposed hybrid implementation to compromise:\n\n- Use SPIRE agents + sidecars for critical, high‑risk services (payments, auth, db proxies).\n- Use JWT‑SVID (SPIFFE supports JWT‑SVID) for lightweight validation in low‑risk services — apps validate locally with a stable public key bundle.\n- Deploy OPA as a local sidecar for low latency but keep a central OPA server for policy authorship and CI testing; use policy signing and automated promotion.\n\nAlso, we should create canary KPIs: start at 5% traffic, expand if p99 auth latency delta <2ms and CPU overhead <5%."
+      "mdx": "## Scope and stage, not stall\nI can accept uniform identity (SPIFFE), but keep authz coarse (RBAC) first. Canary enforcement, dev permissive, prod strict.\n```yaml\nallow: serviceA->serviceB if scope: orders\n```\nLet’s harden iteratively while we keep features moving."
     },
     {
       "speaker": "security_engineer",
-      "mdx": "I like the hybrid shape and it's consistent with SPIFFE capabilities. A few concrete mechanisms and operational controls I insist on:\n\n- Use JWT‑SVIDs where appropriate: SPIRE issues JWT‑SVIDs so apps can validate tokens offline using the trust bundle (no introspection). This addresses your SDK concern without sacrificing short TTLs.\n- Policy enforcement: use Envoy RBAC + OPA plugin for complex attribute logic; OPA Gatekeeper for K8s admission controls to stop misconfigurations.\n- Failover and TTL specifics:\n  - Certificate/SVID TTL: 10–30 minutes (trade‑off: shorter TTL reduces compromise window but increases issuance load).\n  - SPIRE HA: run SPIRE server as an HA set; monitor issuance latency and queue length; alert at issuance latency >500ms or queue >1000.\n- Rollback strategy: permissive mode with strict audit for a maximum window (e.g., 4 hours) and automated rollback if:\n  - p99 auth latency increases >2ms above baseline, or\n  - request error rate increases by >1% absolute, or\n  - CPU overhead >7% on canary pods.\n\nMinimal diagram of the flow:\n\n```mermaid\nflowchart LR\n  A[workload] -->|fetch SVID| B[SPIRE agent]\n  A -->|mTLS| C[sidecar Envoy]\n  C -->|policy check| D[OPA sidecar]\n  D --> E[target service]\n```\n\nI’ll own SPIRE outage playbooks and automated alerts if we agree on the KPI thresholds above."
+      "mdx": "## Non‑negotiables, with guardrails\n- Workload identity + mTLS by default\n- Deny‑by‑default east‑west\n- Egress allowlist with logged break‑glass\n```mermaid\nflowchart LR\nClient-->Gateway\nGateway-->A\nA-->Policy\nPolicy-->B\n```\nPut a policy engine on every hop; no silent bypass."
     },
     {
       "speaker": "application_engineer",
-      "mdx": "That diagram and the concrete thresholds make the plan actionable. I accept the hybrid architecture provided we lock down these operational SLAs and automation steps:\n\n- KPIs and rollout gates:\n  - Canary progression: 5% -> 25% -> 100% when p99 auth latency delta <= 2ms and CPU overhead <= 5%.\n  - If error rate increases >1% or auth failures >0.1% for 10 minutes, auto‑rollback to permissive for affected canaries.\n- Performance mitigations:\n  - Use eBPF for in‑kernel fast path where possible and an Envoy wasm filter for lightweight policy checks.\n  - Cache public bundles for JWT‑SVID validation, refresh off‑peak.\n- Responsibilities:\n  - Security owns SPIRE HA, TTL tuning, and automated rollback playbooks.\n  - Platform owns sidecar deployment patterns, eBPF integration, and a policy CI that validates Rego on test traffic.\n\nIf you commit to those duties and the canary gates, I’ll start a pilot with three critical services and measure metrics for two weeks before broader rollout."
+      "mdx": "## Deal—platform owns the pain\nI’ll take your must‑haves if the platform handles it:\n- Automated certs/rotation and golden sidecar or node agent\n- Policy templates, tests in pipeline, clear defaults\n- Escape hatch with SLO‑based review\nWe move fast, you get uniform guardrails. Tension stays healthy."
     }
   ]
 }
 </file>
 
-<file path="src/hooks/useAutoScroll.ts">
-import { useLayoutEffect, useRef } from "react";
-
-/**
- * useAutoScroll
- *
- * Responsibility:
- * ----------------
- * Perform automatic scroll-to-bottom behavior when:
- *   - New content (blocks) is appended
- *   - The state machine currently owns scrolling ("machineOwned")
- *   - Layout has fully stabilized (MDX + Mermaid rendered, heights settled)
- *
- * Design Principles:
- * ------------------
- * 1. Never scroll before layout is stable.
- * 2. Never scroll if the user owns scrolling.
- * 3. Scroll exactly once per append event.
- * 4. Suppress ownership recalculation while we are restoring scroll.
- *
- * This hook is intentionally imperative and uses refs instead of state
- * because this is coordination logic, not UI state.
- */
-export function useAutoScroll(
-  scrollRef: React.RefObject<HTMLDivElement | null>,
-
-  /**
-   * The number of rendered blocks.
-   * When this increases, it means new content has been appended.
-   */
-  blocksLength: number,
-
-  /**
-   * Current scroll ownership, derived from the XState machine.
-   * - "machineOwned" → auto-scroll allowed
-   * - "userOwned"    → do not interfere
-   */
-  scrollOwner: "machineOwned" | "userOwned",
-
-  /**
-   * True only after layout has fully stabilized.
-   * Provided by useLayoutStable (ResizeObserver-based settling).
-   */
-  layoutReady: boolean,
-) {
-  /**
-   * Tracks the previous blocks length.
-   * Used to detect content growth (append events).
-   */
-  const prevLengthRef = useRef(blocksLength);
-
-  /**
-   * A one-shot latch indicating:
-   *   "We owe the viewport a scroll-to-bottom once layout stabilizes."
-   *
-   * Why needed:
-   * - New content may append before layoutReady becomes true.
-   * - We must remember that a scroll is required.
-   * - We must perform it exactly once.
-   *
-   * This is not UI state — it is internal coordination memory.
-   */
-  const pendingScrollRef = useRef(false);
-
-  /**
-   * Indicates that we are currently performing a machine-driven
-   * scroll restoration.
-   *
-   * This is consumed by useScrollOwnership to avoid misinterpreting
-   * our own programmatic scroll as a user scroll.
-   */
-  const restoringRef = useRef(false);
-
-  /**
-   * useLayoutEffect is used instead of useEffect because:
-   * - We want scroll mutation to occur before the browser paints.
-   * - This prevents visible flicker or mid-frame repositioning.
-   */
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    /* ------------------------------------------------------------
-       Phase 1 — Detect Content Growth
-    ------------------------------------------------------------ */
-
-    // If blocksLength changed, new content was appended.
-    if (blocksLength !== prevLengthRef.current) {
-      prevLengthRef.current = blocksLength;
-
-      // Only schedule auto-scroll if machine owns scrolling.
-      // If user owns scroll, we intentionally do nothing.
-      if (scrollOwner === "machineOwned") {
-        pendingScrollRef.current = true;
-      }
-    }
-
-    /* ------------------------------------------------------------
-       Phase 2 — Execute Deferred Scroll (Once Layout Is Stable)
-    ------------------------------------------------------------ */
-
-    // Only scroll when:
-    // - layout has settled (heights finalized)
-    // - we previously recorded intent to scroll
-    if (layoutReady && pendingScrollRef.current) {
-      // Mark that this scroll is programmatic.
-      restoringRef.current = true;
-
-      // Jump to bottom.
-      // We use scrollHeight to ensure exact bottom alignment.
-      el.scrollTop = el.scrollHeight;
-
-      // Manually dispatch scroll so ownership logic recalculates.
-      // Without this, useScrollOwnership may not re-evaluate.
-      el.dispatchEvent(new Event("scroll"));
-
-      // Reset flags.
-      restoringRef.current = false;
-      pendingScrollRef.current = false;
-    }
-  }, [blocksLength, layoutReady, scrollOwner]);
-
-  /**
-   * We return restoringRef so useScrollOwnership can suppress
-   * machine-driven scroll events.
-   *
-   * This is an intentional cross-hook coordination channel.
-   */
-  return restoringRef;
-}
-</file>
-
 <file path="src/hooks/useGradientProjection.ts">
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ObserverMetrics } from "./useObserverAnchor";
 
 /**
  * useGradientProjection
  *
- * Responsibility:
- * Convert geometry telemetry (anchor position)
- * into a normalized visual intensity signal.
- *
- * This hook does not read DOM.
- * It purely transforms metrics → presentation value.
+ * Gradient represents machine ownership (auto-follow mode).
+ * Visible when machineOwned.
+ * Hidden when userOwned.
+ * Includes grace window to prevent flicker.
  */
 export function useGradientProjection(
   observerMetrics: ObserverMetrics | null,
   layoutReady: boolean,
-  maxDistance: number = 400,
+  scrollOwner: "machineOwned" | "userOwned",
+  maxDistance: number = 500,
 ) {
-  // Final eased intensity used by UI
   const [intensity, setIntensity] = useState(0);
 
-  // Raw 0–1 normalized distance before easing
-  const [normalizedPosition, setNormalizedPosition] = useState(0);
+  const GRACE_MS = 250;
+  const hideAfterRef = useRef<number>(0);
 
   useEffect(() => {
-    // Do nothing until layout is stable and we have metrics
-    if (!layoutReady || !observerMetrics) return;
+    if (!layoutReady) return;
 
-    const { midYInViewport, viewportHeight } = observerMetrics;
+    const now = performance.now();
 
-    /**
-     * Distance between anchor midpoint and viewport bottom.
-     * When anchor approaches bottom, gradient intensity increases.
-     */
-    const distanceFromViewportBottom = viewportHeight - midYInViewport;
+    // Optional subtle geometry modulation
+    let geometryFactor = 1;
 
-    /**
-     * Normalize distance into 0–1 range.
-     * Clamped to avoid overflow.
-     */
-    const normalized = Math.max(
-      0,
-      Math.min(distanceFromViewportBottom / maxDistance, 1),
-    );
+    if (observerMetrics) {
+      const { midYInViewport, viewportHeight } = observerMetrics;
+      const distance = viewportHeight - midYInViewport;
 
-    /**
-     * Apply cubic ease-out for smoother visual falloff.
-     * Keeps interaction feeling soft instead of linear.
-     */
-    const eased = 1 - Math.pow(1 - normalized, 3);
+      const normalized = Math.max(0, Math.min(distance / maxDistance, 1));
 
-    setNormalizedPosition(normalized);
-    setIntensity(eased);
-  }, [observerMetrics, layoutReady, maxDistance]);
+      geometryFactor = 1 - Math.pow(1 - normalized, 2);
+    }
 
-  return { intensity, normalizedPosition };
+    if (scrollOwner === "machineOwned") {
+      // Machine in control → show gradient
+      hideAfterRef.current = now + GRACE_MS;
+      setIntensity(0.9 * geometryFactor); // subtle cap
+      return;
+    }
+
+    // User owns → fade out after grace
+    if (now < hideAfterRef.current) {
+      setIntensity(0.9 * geometryFactor);
+    } else {
+      setIntensity(0);
+    }
+  }, [observerMetrics, layoutReady, scrollOwner, maxDistance]);
+
+  return { intensity };
 }
 </file>
 
@@ -972,16 +1488,26 @@ export function installTestBridge() {
 // shared/schemas.ts
 import { z } from "zod";
 
-/**
- * Prompt Input
- */
+/* ============================================================
+   Constants
+============================================================ */
+
+const MAX_MDX_LENGTH = 500; // Hard cap per turn (tight + demo-safe)
+const MAX_MERMAID_BLOCK_LENGTH = 300; // Diagram can never dominate the turn
+const MAX_TOPIC_LENGTH = 160; // Enough for specificity, prevents rambling
+
+/* ============================================================
+   Prompt Input
+============================================================ */
+
 export const PromptRequestSchema = z.object({
-  prompt: z.string().min(1),
+  prompt: z.string().min(1).max(300),
 });
 
-/**
- * Speakers
- */
+/* ============================================================
+   Speakers
+============================================================ */
+
 export const SpeakerSchema = z.enum([
   "security_engineer",
   "application_engineer",
@@ -989,24 +1515,58 @@ export const SpeakerSchema = z.enum([
 
 export type Speaker = z.infer<typeof SpeakerSchema>;
 
-/**
- * A single conversational turn.
- * mdx is markdown/MDX-ish content (we'll render as markdown).
- * Mermaid diagrams are expressed as ```mermaid code fences inside mdx.
- */
+/* ============================================================
+   Mermaid Validation
+============================================================ */
+
+function validateMermaidBlocks(text: string) {
+  const blocks = text.match(/```mermaid[\s\S]*?```/g);
+  if (!blocks) return true;
+
+  return blocks.every((block) => {
+    // Size constraint
+    if (block.length > MAX_MERMAID_BLOCK_LENGTH) return false;
+
+    // Must begin with flowchart LR
+    if (!block.includes("flowchart LR")) return false;
+
+    // Basic forbidden constructs
+    if (
+      block.includes("click ") ||
+      block.includes("classDef") ||
+      block.includes("note over") ||
+      block.includes("sequenceDiagram")
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+/* ============================================================
+   Turn Schema
+============================================================ */
+
 export const TurnSchema = z.object({
   speaker: SpeakerSchema,
-  mdx: z.string().min(1),
+
+  mdx: z.string().min(1).max(MAX_MDX_LENGTH).refine(validateMermaidBlocks, {
+    message: "Invalid or oversized mermaid diagram block",
+  }),
 });
 
 export type Turn = z.infer<typeof TurnSchema>;
 
-/**
- * Dialogue root
- */
+/* ============================================================
+   Dialogue Root
+============================================================ */
+
 export const DialogueSchema = z.object({
-  topic: z.string().min(1),
-  turns: z.array(TurnSchema).min(6).max(12),
+  topic: z.string().min(1).max(MAX_TOPIC_LENGTH),
+
+  // Tighten to match system prompt (6–10)
+  turns: z.array(TurnSchema).min(6).max(10),
 });
 
 export type Dialogue = z.infer<typeof DialogueSchema>;
@@ -1055,6 +1615,130 @@ export function MdxRenderer({ content }: { content: string }) {
       </MarkdownHooks>
     </Box>
   );
+}
+</file>
+
+<file path="src/hooks/useAutoScroll.ts">
+import { useLayoutEffect, useRef } from "react";
+
+function easeOutCubic(t: number) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+export function useAutoScroll(
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  blocksLength: number,
+  scrollOwner: "machineOwned" | "userOwned",
+  layoutReady: boolean,
+) {
+  const prevLengthRef = useRef(blocksLength);
+  const pendingScrollRef = useRef(false);
+  const restoringRef = useRef(false);
+  const rafRef = useRef<number | null>(null);
+
+  // ✅ Avoid stale-closure issues inside rAF
+  const ownerRef = useRef(scrollOwner);
+  ownerRef.current = scrollOwner;
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const cancel = () => {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      restoringRef.current = false;
+    };
+
+    /* ------------------------------------------------------------
+       Phase 1 — Detect Content Growth
+    ------------------------------------------------------------ */
+
+    if (blocksLength !== prevLengthRef.current) {
+      prevLengthRef.current = blocksLength;
+
+      if (scrollOwner === "machineOwned") {
+        pendingScrollRef.current = true;
+      }
+    }
+
+    /* ------------------------------------------------------------
+       Phase 2 — Execute Scroll
+    ------------------------------------------------------------ */
+
+    if (
+      layoutReady &&
+      pendingScrollRef.current &&
+      scrollOwner === "machineOwned"
+    ) {
+      pendingScrollRef.current = false;
+
+      // Always cancel any prior animation before starting a new one
+      cancel();
+
+      const start = el.scrollTop;
+
+      // ✅ Correct "bottom" scrollTop target
+      const target = Math.max(0, el.scrollHeight - el.clientHeight);
+
+      // Nothing to do
+      if (Math.abs(target - start) < 1) {
+        restoringRef.current = false;
+        return;
+      }
+
+      restoringRef.current = true;
+
+      const isTest = import.meta.env.MODE === "test";
+      if (isTest) {
+        el.scrollTop = target;
+        restoringRef.current = false;
+        return;
+      }
+
+      const duration = 700; // ms
+      const startTime = performance.now();
+
+      const animate = (now: number) => {
+        const currentEl = scrollRef.current;
+
+        // If we lost the element, don't leave restoring stuck true
+        if (!currentEl) {
+          cancel();
+          return;
+        }
+
+        // Abort if ownership changed mid-animation
+        if (ownerRef.current !== "machineOwned") {
+          cancel();
+          return;
+        }
+
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = easeOutCubic(progress);
+
+        const next = start + (target - start) * eased;
+        currentEl.scrollTop = next;
+
+        if (progress < 1) {
+          rafRef.current = requestAnimationFrame(animate);
+        } else {
+          currentEl.scrollTop = target; // guarantee exact bottom
+          cancel();
+        }
+      };
+
+      rafRef.current = requestAnimationFrame(animate);
+    }
+
+    // ✅ Critical for StrictMode: cleanup must clear restoringRef
+    return () => cancel();
+  }, [blocksLength, layoutReady, scrollOwner, scrollRef]);
+
+  return restoringRef;
 }
 </file>
 
@@ -1261,176 +1945,137 @@ export function useDebateProjection() {
 import { useEffect, useRef } from "react";
 import type { AnyActorRef } from "xstate";
 
-/**
- * useScrollOwnership
- *
- * Responsibility:
- * ----------------
- * Detect whether the user or the machine currently "owns" scroll.
- *
- * This hook translates raw DOM scroll movement into semantic events
- * for the XState machine:
- *
- *   - USER_SCROLLED_UP  → transition to userOwned
- *   - USER_AT_BOTTOM    → transition to machineOwned
- *
- * Design Goals:
- * -------------
- * 1. Only emit ownership transitions when they truly change.
- * 2. Never treat machine-driven scroll restoration as user input.
- * 3. Be resilient to small pixel drift.
- * 4. Avoid event spam.
- *
- * This is the arbitration layer between:
- *   - Physical scroll movement
- *   - Semantic ownership state
- */
 export function useScrollOwnership(
-  /**
-   * XState send function.
-   * We emit semantic ownership events into the machine.
-   */
   send: AnyActorRef["send"],
-
-  /**
-   * Ref to the scrollable viewport.
-   */
   scrollRef: React.RefObject<HTMLDivElement | null>,
-
-  /**
-   * Shared ref from useAutoScroll.
-   * When true, we are currently restoring scroll programmatically.
-   * During restoration, ownership logic must be suppressed.
-   */
   restoringRef: React.MutableRefObject<boolean>,
 ) {
-  /**
-   * Tracks whether we previously considered ourselves at bottom.
-   * Used to prevent emitting duplicate machine events.
-   */
   const lastAtBottomRef = useRef<boolean | null>(null);
-
-  /**
-   * Tracks the previous scrollTop value.
-   * Used to determine scroll direction (up vs down).
-   */
   const lastScrollTopRef = useRef<number>(0);
+
+  /* ------------------------------------------------------------
+     User Intent Detection
+  ------------------------------------------------------------ */
+
+  const USER_INTENT_WINDOW_MS = 200;
+  const GRACE_MS = 250;
+
+  const lastUserIntentRef = useRef<number>(0);
+  const ignoreUntilRef = useRef<number>(0);
+  const wasRestoringRef = useRef<boolean>(false);
+
+  const registerUserIntent = () => {
+    lastUserIntentRef.current = performance.now();
+  };
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
-    /**
-     * checkOwnership
-     *
-     * Called on every scroll event.
-     * Converts raw scroll metrics into semantic ownership signals.
-     */
+    el.addEventListener("wheel", registerUserIntent, { passive: true });
+    el.addEventListener("touchstart", registerUserIntent, { passive: true });
+    el.addEventListener("touchmove", registerUserIntent, { passive: true });
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowUp" || e.key === "PageUp" || e.key === "Home") {
+        registerUserIntent();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      el.removeEventListener("wheel", registerUserIntent);
+      el.removeEventListener("touchstart", registerUserIntent);
+      el.removeEventListener("touchmove", registerUserIntent);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [scrollRef]);
+
+  /* ------------------------------------------------------------
+     Scroll Ownership Detection
+  ------------------------------------------------------------ */
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
     const checkOwnership = () => {
       const currentScrollTop = el.scrollTop;
 
-      /**
-       * Are we effectively at bottom?
-       *
-       * We allow a 5px tolerance to prevent flicker due to
-       * rounding errors or fractional layout differences.
-       */
       const atBottom =
         currentScrollTop + el.clientHeight >= el.scrollHeight - 5;
 
-      /**
-       * Determine scroll direction.
-       * This helps distinguish intentional upward scroll
-       * from incidental position drift.
-       */
-      const scrollingUp = currentScrollTop < lastScrollTopRef.current;
-      const scrollingDown = currentScrollTop > lastScrollTopRef.current;
+      const delta = currentScrollTop - lastScrollTopRef.current;
+      const significantMove = Math.abs(delta) > 4;
+      const scrollingUp = delta < -4;
+
+      lastScrollTopRef.current = currentScrollTop;
+
+      const now = performance.now();
+      const userRecentlyInteracted =
+        now - lastUserIntentRef.current < USER_INTENT_WINDOW_MS;
+
+      const inGraceWindow = now < ignoreUntilRef.current;
+
+      // Detect restore completion → extend grace
+      const isRestoring = restoringRef.current;
+      if (wasRestoringRef.current && !isRestoring) {
+        ignoreUntilRef.current = now + GRACE_MS;
+      }
+      wasRestoringRef.current = isRestoring;
 
       console.log("[ownership check]", {
         scrollTop: currentScrollTop,
-        clientHeight: el.clientHeight,
-        scrollHeight: el.scrollHeight,
-        atBottom,
-        restoring: restoringRef.current,
-        lastAtBottom: lastAtBottomRef.current,
+        delta,
         scrollingUp,
-        scrollingDown,
+        significantMove,
+        atBottom,
+        restoring: isRestoring,
+        userRecentlyInteracted,
+        inGraceWindow,
       });
 
-      /**
-       * Update scroll tracker immediately.
-       * This ensures future direction comparisons are accurate.
-       */
-      lastScrollTopRef.current = currentScrollTop;
-
-      /**
-       * Suppress ownership logic during machine-driven restoration.
-       *
-       * Without this, a programmatic scroll-to-bottom
-       * would be interpreted as user scroll,
-       * causing oscillation between states.
-       */
-      if (restoringRef.current) return;
+      // Suppress during machine restore
+      if (isRestoring) return;
 
       /* ------------------------------------------------------------
-         Case 1: User scrolls upward and is no longer at bottom
+         Case 1: Upward scroll WITH user intent + outside grace
       ------------------------------------------------------------ */
 
-      if (!atBottom && scrollingUp) {
-        /**
-         * Only emit transition if ownership is actually changing.
-         * Prevents duplicate USER_SCROLLED_UP events.
-         */
+      if (
+        !atBottom &&
+        scrollingUp &&
+        significantMove &&
+        userRecentlyInteracted &&
+        !inGraceWindow
+      ) {
         if (lastAtBottomRef.current !== false) {
           lastAtBottomRef.current = false;
-
-          // Semantic transition: machine → user ownership
           send({ type: "USER_SCROLLED_UP" });
         }
         return;
       }
 
       /* ------------------------------------------------------------
-         Case 2: Scroll position reaches bottom
+         Case 2: Reached bottom
       ------------------------------------------------------------ */
 
       if (atBottom) {
-        /**
-         * Only emit transition if ownership is changing.
-         */
         if (lastAtBottomRef.current !== true) {
           lastAtBottomRef.current = true;
-
-          // Semantic transition: user → machine ownership
+          ignoreUntilRef.current = now + GRACE_MS; // small buffer
           send({ type: "USER_AT_BOTTOM" });
         }
       }
-
-      /**
-       * Note:
-       * We intentionally do nothing for:
-       *   - scrollingDown but not yet at bottom
-       *   - small drift while still at bottom
-       *
-       * Ownership only changes on meaningful boundary crossings.
-       */
     };
 
-    /**
-     * Passive listener because we do not preventDefault
-     * and we want scroll performance preserved.
-     */
     el.addEventListener("scroll", checkOwnership, { passive: true });
-
-    /* ------------------------------------------------------------
-       Initialize baseline state
-    ------------------------------------------------------------ */
 
     lastScrollTopRef.current = el.scrollTop;
     lastAtBottomRef.current =
       el.scrollTop + el.clientHeight >= el.scrollHeight - 5;
 
-    // Run once to align machine with initial position.
     checkOwnership();
 
     return () => {
@@ -1581,263 +2226,6 @@ export const debateMachine = setup({
 });
 </file>
 
-<file path="tests/scroll.spec.ts">
-import { test, expect } from "@playwright/test";
-import type { Page } from "@playwright/test";
-import type { Turn } from "../shared/schemas";
-
-/* ============================================================
-   Scroll Ownership E2E Tests
-
-   These tests validate two layers simultaneously:
-
-   1) Control plane (XState)
-      - machineOwned vs userOwned
-      - USER_SCROLLED_UP / USER_AT_BOTTOM transitions
-
-   2) Physical scroll geometry
-      - Whether the viewport is actually at bottom
-      - Whether auto-scroll truly occurred
-
-   We are NOT just checking state flags.
-   We are validating that physical scroll behavior matches
-   machine authority semantics.
-============================================================ */
-
-/* ------------------------------------------------------------
-   Helpers
------------------------------------------------------------- */
-
-/**
- * Creates a tall turn so that scrolling is meaningful.
- * Each turn contains enough repeated text to produce
- * vertical overflow in the scroll container.
- */
-function turn(i: number): Turn {
-  return {
-    speaker: i % 2 === 0 ? "security_engineer" : "application_engineer",
-    mdx: `Turn ${i}\n\n` + "word ".repeat(200),
-  };
-}
-
-/**
- * Waits until:
- * 1) The test bridge is installed (window.__socratic exists)
- * 2) The scroll viewport is mounted in the DOM
- *
- * This prevents DOM race conditions where React has not yet mounted.
- */
-async function waitForAppReady(page: Page) {
-  await page.waitForFunction(() => !!window.__socratic);
-  await page.waitForSelector("[data-testid='scroll-viewport']");
-}
-
-/**
- * Emits APPEND_TURN events through the bridge.
- * This simulates replay-driven content growth.
- */
-async function appendTurns(page: Page, count: number) {
-  for (let i = 0; i < count; i++) {
-    await page.evaluate((payload: Turn) => {
-      window.__socratic?.emit("APPEND_TURN", payload);
-    }, turn(i));
-  }
-}
-
-/**
- * Simulates a user scroll by mutating scrollTop and
- * manually dispatching a scroll event.
- *
- * This ensures ownership logic is triggered.
- */
-async function manualScroll(page: Page, delta: number) {
-  await page.evaluate((amount) => {
-    const el = document.querySelector(
-      "[data-testid='scroll-viewport']",
-    ) as HTMLElement;
-
-    el.scrollTop += amount;
-    el.dispatchEvent(new Event("scroll"));
-  }, delta);
-}
-
-/**
- * Force scroll to bottom.
- * Used to simulate a user returning control to the machine.
- */
-async function scrollToBottom(page: Page) {
-  await page.evaluate(() => {
-    const el = document.querySelector(
-      "[data-testid='scroll-viewport']",
-    ) as HTMLElement;
-
-    el.scrollTop = el.scrollHeight;
-    el.dispatchEvent(new Event("scroll"));
-  });
-}
-
-/**
- * Reads scroll ownership from DOM attribute.
- * This reflects XState's parallel "scroll" region.
- */
-async function getOwner(page: Page) {
-  return page.getByTestId("scroll-viewport").getAttribute("data-scroll-owner");
-}
-
-/* ------------------------------------------------------------
-   Console passthrough (useful during debugging)
------------------------------------------------------------- */
-
-test.beforeEach(async ({ page }) => {
-  page.on("console", (msg) => {
-    console.log(`[browser:${msg.type()}]`, msg.text());
-  });
-});
-
-/* ------------------------------------------------------------
-   Fresh State
------------------------------------------------------------- */
-
-/**
- * On first load:
- *
- * - No content overflow yet.
- * - Scroll position is naturally at top.
- * - But since top === bottom (no overflow),
- *   machine should own scroll.
- */
-test("fresh load starts machineOwned", async ({ page }) => {
-  await page.goto("/");
-  await waitForAppReady(page);
-
-  const owner = await getOwner(page);
-  expect(owner).toBe("machineOwned");
-});
-
-/* ------------------------------------------------------------
-   Auto-scroll behavior
------------------------------------------------------------- */
-
-/**
- * This test verifies the core invariant:
- *
- * When machineOwned and content is appended,
- * the viewport must automatically scroll to bottom.
- *
- * We validate BOTH:
- *   1) Ownership state
- *   2) Physical geometry
- *
- * ------------------------------------------------------------
- * Geometry Explanation:
- *
- *   scrollTop      → distance from top
- *   clientHeight   → viewport height
- *   scrollHeight   → total content height
- *
- * If the viewport is at bottom:
- *
- *   scrollTop + clientHeight ≈ scrollHeight
- *
- * ASCII diagram:
- *
- *   |----------------------|   <- scrollHeight (content bottom)
- *   |                      |
- *   |                      |
- *   |   visible viewport   |   <- clientHeight
- *   |                      |
- *   |----------------------|
- *   ^
- *   scrollTop
- *
- * Due to subpixel rounding and layout jitter,
- * we allow a tolerance of 5px.
- */
-test("machineOwned auto-scrolls on append", async ({ page }) => {
-  await page.goto("/");
-  await waitForAppReady(page);
-
-  // Grow content beyond viewport height
-  await appendTurns(page, 8);
-
-  // Machine should retain ownership
-  await expect.poll(() => getOwner(page)).toBe("machineOwned");
-
-  // Verify physical scroll invariant
-  await expect
-    .poll(async () =>
-      page.evaluate(() => {
-        const el = document.querySelector(
-          "[data-testid='scroll-viewport']",
-        ) as HTMLElement;
-
-        const bottomEdge = el.scrollTop + el.clientHeight;
-        const contentBottom = el.scrollHeight;
-
-        // Allow 5px tolerance for layout rounding
-        return bottomEdge >= contentBottom - 5;
-      }),
-    )
-    .toBeTruthy();
-});
-
-/* ------------------------------------------------------------
-   Manual Scroll Behavior
------------------------------------------------------------- */
-
-/**
- * If the user scrolls upward:
- *
- * - We are no longer at bottom
- * - Ownership must transfer to userOwned
- *
- * This ensures:
- *   machine does not fight the user
- */
-test("manual scroll up transitions to userOwned", async ({ page }) => {
-  await page.goto("/");
-  await waitForAppReady(page);
-
-  await appendTurns(page, 8);
-  await scrollToBottom(page);
-
-  // Simulate user scrolling upward
-  await manualScroll(page, -600);
-
-  await expect.poll(() => getOwner(page)).toBe("userOwned");
-});
-
-/* ------------------------------------------------------------
-   Returning to bottom
------------------------------------------------------------- */
-
-/**
- * If the user scrolls back to bottom:
- *
- * - USER_AT_BOTTOM event should fire
- * - Ownership must return to machineOwned
- *
- * This restores auto-scroll authority.
- */
-test("scrolling back to bottom transitions to machineOwned", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await waitForAppReady(page);
-
-  await appendTurns(page, 8);
-  await scrollToBottom(page);
-  await manualScroll(page, -600);
-
-  await expect.poll(() => getOwner(page)).toBe("userOwned");
-
-  // Simulate user returning to bottom
-  await scrollToBottom(page);
-
-  await expect.poll(() => getOwner(page)).toBe("machineOwned");
-});
-</file>
-
 <file path="flake.nix">
 {
   description = "Bun + Vite + Playwright + Pre-commit multi-platform dev shell";
@@ -1924,38 +2312,67 @@ STRUCTURE:
 CONVERSATION RULES:
 - The first turn must be from "security_engineer".
 - Speakers must strictly alternate.
-- Each speaker must contribute 3–5 turns.
-- Total turns: 6–10.
-- The debate must include real disagreement and trade-offs.
-- Avoid generic statements.
+- Each speaker must contribute 3–4 turns.
+- Total turns: 6–8.
+- The debate must include real disagreement and visible trade-offs.
+- Avoid generic agreement or polite convergence too early.
 
 CONTENT RULES:
 - The "mdx" field must contain valid markdown.
-- Allowed markdown constructs:
-    - paragraphs
-    - bullet lists
+- Allowed constructs:
+    - short paragraphs
+    - bullet lists (max 3 per turn)
     - headings
     - fenced code blocks
-    - mermaid fenced diagrams
+    - fenced mermaid diagrams
 - Do not include markdown fences outside the mdx string.
 - Do not include commentary outside the JSON response.
 - Do not include extra keys.
 
+RESPONSE LENGTH RULES:
+- Each turn must be under 500 characters.
+- Keep ideas focused and tight.
+- Avoid dense implementation detail unless directly relevant.
+- Formatting (headings, bullets, diagrams) is encouraged — but must improve clarity, not increase length.
+
 MERMAID RULES:
-- If including a diagram, use a fenced code block with language "mermaid".
-- Always begin diagrams with: flowchart LR
-- Keep diagrams minimal.
+- Use fenced code block with language "mermaid".
+- Must begin with: flowchart LR
+- Keep diagrams minimal (≤6 nodes, ≤8 edges).
+- No nested subgraphs.
 - Do not use:
     - click directives
     - classDef
     - note over
     - sequenceDiagram
-- Ensure valid Mermaid syntax.
 
-STYLE:
-- Technical but concise.
-- Cite concrete mechanisms (e.g., SPIFFE, OPA, gateways, rollout modes, failure cases).
-- Each turn should respond directly to the previous one.
+STYLE AND TONE:
+
+- Write like two senior engineers debating at a whiteboard.
+- Conversational, sharp, and opinionated.
+- Avoid sounding like a design document or compliance checklist.
+- Use MDX formatting creatively to make ideas visually clear.
+- Avoid long, dense bullet lists.
+- Avoid stacking acronyms (max 2 per turn unless essential).
+
+DIALOGUE DYNAMICS:
+
+- Each turn must directly respond to the previous turn.
+- Maintain tension; do not converge too quickly.
+- Make the philosophical difference clear.
+- The final turn may propose compromise, but preserve worldview contrast.
+
+CHARACTERIZATION:
+
+Security Engineer:
+- Thinks in terms of blast radius and worst-case scenarios.
+- Pushes for principled, uniform guardrails.
+- Often asks “what happens when…” or says “assume compromise.”
+
+Application Engineer:
+- Thinks in terms of velocity and developer experience.
+- Pushes for incremental, pragmatic solutions.
+- Often asks “can we…” or “do we really need…”
 `.trim();
 
 function json(data: unknown, init?: ResponseInit) {
@@ -1977,7 +2394,7 @@ async function handleDialogue(req: Request) {
   const start = performance.now();
 
   const response = await client.responses.parse({
-    model: "gpt-5-mini",
+    model: "gpt-5",
     input: [
       { role: "system", content: SYSTEM },
       { role: "user", content: `Topic: ${body.prompt}` },
@@ -2025,6 +2442,226 @@ Bun.serve({
 
     return new Response("Not Found", { status: 404 });
   },
+});
+</file>
+
+<file path="tests/scroll.spec.ts">
+import { test, expect } from "@playwright/test";
+import {
+  waitForAppReady,
+  appendTurns,
+  manualScroll,
+  scrollToBottom,
+  getScrollOwner,
+  isPhysicallyAtBottom,
+} from "./utils/scrollTestUtils";
+
+/* ============================================================
+   Scroll Ownership E2E Tests
+
+   These tests validate two layers simultaneously:
+
+   1) Control Plane (XState)
+      - machineOwned vs userOwned
+      - USER_SCROLLED_UP / USER_AT_BOTTOM transitions
+
+   2) Physical Scroll Geometry
+      - Whether the viewport is actually at bottom
+      - Whether auto-scroll truly occurred
+
+   IMPORTANT:
+   We are NOT asserting internal machine snapshots.
+   We assert via DOM attributes + rendered geometry.
+
+   The test utilities abstract DOM mechanics so this
+   file reads like a specification of invariants.
+============================================================ */
+
+/* ------------------------------------------------------------
+   Console passthrough (useful during debugging)
+------------------------------------------------------------ */
+
+test.beforeEach(async ({ page }) => {
+  page.on("console", (msg) => {
+    console.log(`[browser:${msg.type()}]`, msg.text());
+  });
+});
+
+/* ------------------------------------------------------------
+   Fresh State Invariant
+------------------------------------------------------------ */
+
+/**
+ * On first load:
+ *
+ * - No content overflow yet.
+ * - Scroll position is naturally at top.
+ * - But since top === bottom (no overflow),
+ *   machine should own scroll.
+ *
+ * This validates:
+ * - Initial scroll region state
+ * - Machine/DOM integration
+ */
+test("fresh load starts machineOwned", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+
+  const owner = await getScrollOwner(page);
+  expect(owner).toBe("machineOwned");
+});
+
+/* ------------------------------------------------------------
+   Auto-scroll Invariant
+------------------------------------------------------------ */
+
+/**
+ * Core invariant:
+ *
+ * When machineOwned and content is appended,
+ * the viewport must automatically scroll to bottom.
+ *
+ * We validate BOTH:
+ *   1) Ownership state remains machineOwned
+ *   2) Physical geometry reflects bottom alignment
+ *
+ * Geometry Definition:
+ *
+ *   scrollTop      → distance from top
+ *   clientHeight   → viewport height
+ *   scrollHeight   → total content height
+ *
+ * Bottom condition:
+ *
+ *   scrollTop + clientHeight ≈ scrollHeight
+ *
+ * Tolerance: 5px (subpixel rounding, layout jitter)
+ */
+test("machineOwned auto-scrolls on append", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+
+  // Grow content beyond viewport height
+  await appendTurns(page, 8);
+
+  // Machine should retain ownership
+  await expect.poll(() => getScrollOwner(page)).toBe("machineOwned");
+
+  // Verify physical scroll invariant
+  await expect.poll(() => isPhysicallyAtBottom(page)).toBeTruthy();
+});
+
+/* ------------------------------------------------------------
+   Manual Scroll → userOwned
+------------------------------------------------------------ */
+
+/**
+ * If the user scrolls upward:
+ *
+ * - We are no longer at bottom
+ * - Ownership must transfer to userOwned
+ *
+ * This ensures:
+ *   The machine does not fight user scroll input.
+ */
+test("manual scroll up transitions to userOwned", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+
+  await appendTurns(page, 8);
+  await scrollToBottom(page);
+
+  // Sanity check: we start machineOwned
+  await expect.poll(() => getScrollOwner(page)).toBe("machineOwned");
+
+  // Simulate user scrolling upward
+  await manualScroll(page, -600);
+
+  // 🔎 First assert geometry changed
+  const notAtBottom = await page.evaluate(() => {
+    const el = document.querySelector(
+      "[data-testid='scroll-viewport']",
+    ) as HTMLElement;
+
+    return el.scrollTop + el.clientHeight < el.scrollHeight - 5;
+  });
+
+  expect(notAtBottom).toBeTruthy();
+
+  // 🔎 Then assert state transition
+  await expect.poll(() => getScrollOwner(page)).toBe("userOwned");
+});
+/* ------------------------------------------------------------
+   Return to Bottom → machineOwned
+------------------------------------------------------------ */
+
+/**
+ * If the user scrolls back to bottom:
+ *
+ * - USER_AT_BOTTOM should fire
+ * - Ownership must return to machineOwned
+ *
+ * This restores auto-scroll authority.
+ */
+test("scrolling back to bottom transitions to machineOwned", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+
+  await appendTurns(page, 8);
+  await scrollToBottom(page);
+  await manualScroll(page, -600);
+
+  await expect.poll(() => getScrollOwner(page)).toBe("userOwned");
+
+  // Simulate user returning to bottom
+  await scrollToBottom(page);
+
+  await expect.poll(() => getScrollOwner(page)).toBe("machineOwned");
+});
+
+/* ------------------------------------------------------------
+   userOwned Must Block Auto-scroll
+------------------------------------------------------------ */
+
+/**
+ * Critical invariant:
+ *
+ * If the user has scrolled up (userOwned),
+ * appending new content must NOT auto-scroll.
+ *
+ * We validate BOTH:
+ *   1) Ownership remains userOwned
+ *   2) Physical geometry is NOT at bottom
+ *
+ * This ensures the machine never overrides
+ * explicit user intent.
+ */
+test("userOwned prevents auto-scroll on append", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+
+  // Grow content
+  await appendTurns(page, 8);
+  await scrollToBottom(page);
+
+  // User scrolls up
+  await manualScroll(page, -600);
+
+  await expect.poll(() => getScrollOwner(page)).toBe("userOwned");
+
+  // Sanity check: we are not at bottom
+  expect(await isPhysicallyAtBottom(page)).toBeFalsy();
+
+  // Append new content while userOwned
+  await appendTurns(page, 1);
+
+  // Ownership must remain userOwned
+  await expect.poll(() => getScrollOwner(page)).toBe("userOwned");
+
+  // The viewport must NOT snap to bottom
+  await expect.poll(() => isPhysicallyAtBottom(page)).toBeFalsy();
 });
 </file>
 
@@ -2092,6 +2729,7 @@ import { useObserverAnchor } from "./hooks/useObserverAnchor";
 import { useGradientProjection } from "./hooks/useGradientProjection";
 import { useScrollOwnership } from "./hooks/useScrollOwnership";
 import { useAutoScroll } from "./hooks/useAutoScroll";
+import { useViewportHeight } from "./hooks/useViewportHeight";
 import { MdxRenderer } from "./components/MdxRenderer";
 import { bus } from "./bus";
 
@@ -2102,36 +2740,59 @@ export function App({ inspector }: { inspector?: any }) {
     useDebate(inspector?.inspect);
 
   const blocks = useDebateProjection();
-
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
-  // 1️⃣ Wait for layout (MDX + Mermaid) to stabilize
-  const { ready: layoutReady } = useLayoutStable(scrollRef, blocks);
+  /* ------------------------------------------------------------
+     Layout Stabilization
+  ------------------------------------------------------------ */
 
-  // 2️⃣ Attach observer to bottom of content
+  // 🔥 IMPORTANT: capture version, not just ready
+  const { ready: layoutReady, version: layoutVersion } = useLayoutStable(
+    scrollRef,
+    blocks,
+  );
+
   const { observerRef, observerMetrics } = useObserverAnchor(
     scrollRef,
     layoutReady,
   );
 
-  // 3️⃣ Project observer geometry into gradient intensity
-  const { intensity } = useGradientProjection(observerMetrics, layoutReady);
+  /* ------------------------------------------------------------
+     Viewport Geometry
+  ------------------------------------------------------------ */
 
-  // Extract scroll owner from state machine
+  const viewportHeight = useViewportHeight(scrollRef);
+  const lastBlock = blocks[blocks.length - 1];
+  const lastHeight = lastBlock?.height ?? 0;
+
+  const spacerHeight = Math.max(
+    0,
+    Math.floor((viewportHeight - lastHeight) / 2),
+  );
+
+  /* ------------------------------------------------------------
+     Scroll Ownership
+  ------------------------------------------------------------ */
+
   const scrollOwner =
     typeof state.value === "object" && "scroll" in state.value
       ? state.value.scroll
       : "machineOwned";
 
-  // 4️⃣ Auto-scroll (returns restoringRef)
+  // 🔥 Trigger auto-scroll on layoutVersion change
   const restoringRef = useAutoScroll(
     scrollRef,
-    blocks.length,
+    layoutVersion,
     scrollOwner,
     layoutReady,
   );
 
-  // 5️⃣ Ownership (suppressed while restoring)
+  const { intensity } = useGradientProjection(
+    observerMetrics,
+    layoutReady,
+    scrollOwner,
+  );
+
   useScrollOwnership(send, scrollRef, restoringRef);
 
   return (
@@ -2185,9 +2846,8 @@ export function App({ inspector }: { inspector?: any }) {
         </Button>
       </Box>
 
-      {/* Debate Stage Wrapper */}
+      {/* Debate Stage */}
       <Box flex="1" position="relative">
-        {/* Scroll Viewport */}
         <Box
           ref={scrollRef}
           position="absolute"
@@ -2195,25 +2855,30 @@ export function App({ inspector }: { inspector?: any }) {
           overflowY="auto"
           data-testid="scroll-viewport"
           data-layout-ready={layoutReady ? "true" : "false"}
-          data-scroll-owner={state.value.scroll}
+          data-scroll-owner={scrollOwner}
         >
-          {/* Content Wrapper */}
-          <Box pt="160px" pb="160px">
+          <Box>
+            {/* Symmetric Top Spacer */}
+            <Box height={`${spacerHeight}px`} />
+
             {blocks.map((block, i) => (
               <TurnRow key={block.id} block={block} index={i} />
             ))}
 
-            {/* 2️⃣ Observer Anchor — must be last in content */}
+            {/* Observer Anchor */}
             <Box
               ref={observerRef}
               data-testid="observer-anchor"
               height="1px"
               width="100%"
             />
+
+            {/* Symmetric Bottom Spacer */}
+            <Box data-testid="bottom-spacer" height={`${spacerHeight}px`} />
           </Box>
         </Box>
 
-        {/* 3️⃣ Bottom Gradient — fixed to viewport bottom */}
+        {/* Bottom Gradient */}
         <Box
           pointerEvents="none"
           data-testid="background-gradient"
@@ -2222,18 +2887,24 @@ export function App({ inspector }: { inspector?: any }) {
           bottom="0"
           left="0"
           right="0"
-          height="44px"
+          height="90px" // taller
           bg={`linear-gradient(
             to top,
-            rgba(120,170,255, ${0.32 * intensity}) 0%,
-            rgba(120,170,255, ${0.18 * intensity}) 55%,
+            rgba(120,170,255, ${0.18 * intensity}) 0%,
+            rgba(120,170,255, ${0.1 * intensity}) 35%,
+            rgba(120,170,255, ${0.05 * intensity}) 65%,
             rgba(120,170,255, 0) 100%
           )`}
+          transition="opacity 200ms ease"
         />
       </Box>
     </Box>
   );
 }
+
+/* ------------------------------------------------------------
+   Turn Rendering
+------------------------------------------------------------ */
 
 function TurnRow({ block, index }: { block: any; index: number }) {
   return (
@@ -2241,8 +2912,7 @@ function TurnRow({ block, index }: { block: any; index: number }) {
       display="grid"
       gridTemplateColumns={{ base: "1fr", md: "1fr 1fr" }}
       px={{ base: "6vw", md: "8vw" }}
-      py="100px"
-      mt={index > 0 ? "-30px" : "0px"}
+      mt="0px"
       position="relative"
     >
       <Pane
@@ -2306,8 +2976,6 @@ function MeasuredBubble({
   React.useEffect(() => {
     if (!ref.current) return;
 
-    const el = ref.current;
-
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         bus.emit("TURN_RENDERED", {
@@ -2317,42 +2985,46 @@ function MeasuredBubble({
       }
     });
 
-    observer.observe(el);
+    observer.observe(ref.current);
     return () => observer.disconnect();
   }, [id]);
 
   const isSecurity = speaker === "security_engineer";
 
   return (
-    <MotionBox
-      data-testid="turn-bubble"
-      ref={ref}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-      width="70vw"
-      maxW="1100px"
-      fontSize="18px"
-      borderLeft={isSecurity ? "3px solid rgba(120,170,255,0.35)" : undefined}
-      borderRight={!isSecurity ? "3px solid rgba(255,180,120,0.35)" : undefined}
-      pl={isSecurity ? "28px" : undefined}
-      pr={!isSecurity ? "24px" : undefined}
-      display={!isSecurity ? "flex" : "block"}
-      flexDirection="column"
-      alignItems={!isSecurity ? "flex-end" : undefined}
-    >
-      <Text
-        fontSize="13px"
-        letterSpacing="0.08em"
-        textTransform="uppercase"
-        opacity="0.6"
-        mb="16px"
+    <Box>
+      <MotionBox
+        data-testid="turn-bubble"
+        ref={ref}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        width="70vw"
+        maxW="1100px"
+        fontSize="18px"
+        borderLeft={isSecurity ? "3px solid rgba(120,170,255,0.35)" : undefined}
+        borderRight={
+          !isSecurity ? "3px solid rgba(255,180,120,0.35)" : undefined
+        }
+        pl={isSecurity ? "28px" : undefined}
+        pr={!isSecurity ? "24px" : undefined}
+        display={!isSecurity ? "flex" : "block"}
+        flexDirection="column"
+        alignItems={!isSecurity ? "flex-end" : undefined}
       >
-        {isSecurity ? "Security Engineer" : "Application Engineer"}
-      </Text>
+        <Text
+          fontSize="13px"
+          letterSpacing="0.08em"
+          textTransform="uppercase"
+          opacity="0.6"
+          mb="16px"
+        >
+          {isSecurity ? "Security Engineer" : "Application Engineer"}
+        </Text>
 
-      <Box width="100%" textAlign="left">
-        <MdxRenderer content={content} />
-      </Box>
-    </MotionBox>
+        <Box width="100%" textAlign="left">
+          <MdxRenderer content={content} />
+        </Box>
+      </MotionBox>
+    </Box>
   );
 }
 </file>

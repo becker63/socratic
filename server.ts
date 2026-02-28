@@ -22,38 +22,67 @@ STRUCTURE:
 CONVERSATION RULES:
 - The first turn must be from "security_engineer".
 - Speakers must strictly alternate.
-- Each speaker must contribute 3–5 turns.
-- Total turns: 6–10.
-- The debate must include real disagreement and trade-offs.
-- Avoid generic statements.
+- Each speaker must contribute 3–4 turns.
+- Total turns: 6–8.
+- The debate must include real disagreement and visible trade-offs.
+- Avoid generic agreement or polite convergence too early.
 
 CONTENT RULES:
 - The "mdx" field must contain valid markdown.
-- Allowed markdown constructs:
-    - paragraphs
-    - bullet lists
+- Allowed constructs:
+    - short paragraphs
+    - bullet lists (max 3 per turn)
     - headings
     - fenced code blocks
-    - mermaid fenced diagrams
+    - fenced mermaid diagrams
 - Do not include markdown fences outside the mdx string.
 - Do not include commentary outside the JSON response.
 - Do not include extra keys.
 
+RESPONSE LENGTH RULES:
+- Each turn must be under 500 characters.
+- Keep ideas focused and tight.
+- Avoid dense implementation detail unless directly relevant.
+- Formatting (headings, bullets, diagrams) is encouraged — but must improve clarity, not increase length.
+
 MERMAID RULES:
-- If including a diagram, use a fenced code block with language "mermaid".
-- Always begin diagrams with: flowchart LR
-- Keep diagrams minimal.
+- Use fenced code block with language "mermaid".
+- Must begin with: flowchart LR
+- Keep diagrams minimal (≤6 nodes, ≤8 edges).
+- No nested subgraphs.
 - Do not use:
     - click directives
     - classDef
     - note over
     - sequenceDiagram
-- Ensure valid Mermaid syntax.
 
-STYLE:
-- Technical but concise.
-- Cite concrete mechanisms (e.g., SPIFFE, OPA, gateways, rollout modes, failure cases).
-- Each turn should respond directly to the previous one.
+STYLE AND TONE:
+
+- Write like two senior engineers debating at a whiteboard.
+- Conversational, sharp, and opinionated.
+- Avoid sounding like a design document or compliance checklist.
+- Use MDX formatting creatively to make ideas visually clear.
+- Avoid long, dense bullet lists.
+- Avoid stacking acronyms (max 2 per turn unless essential).
+
+DIALOGUE DYNAMICS:
+
+- Each turn must directly respond to the previous turn.
+- Maintain tension; do not converge too quickly.
+- Make the philosophical difference clear.
+- The final turn may propose compromise, but preserve worldview contrast.
+
+CHARACTERIZATION:
+
+Security Engineer:
+- Thinks in terms of blast radius and worst-case scenarios.
+- Pushes for principled, uniform guardrails.
+- Often asks “what happens when…” or says “assume compromise.”
+
+Application Engineer:
+- Thinks in terms of velocity and developer experience.
+- Pushes for incremental, pragmatic solutions.
+- Often asks “can we…” or “do we really need…”
 `.trim();
 
 function json(data: unknown, init?: ResponseInit) {
@@ -75,7 +104,7 @@ async function handleDialogue(req: Request) {
   const start = performance.now();
 
   const response = await client.responses.parse({
-    model: "gpt-5-mini",
+    model: "gpt-5",
     input: [
       { role: "system", content: SYSTEM },
       { role: "user", content: `Topic: ${body.prompt}` },

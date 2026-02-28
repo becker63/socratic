@@ -1,57 +1,56 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ObserverMetrics } from "./useObserverAnchor";
 
 /**
  * useGradientProjection
  *
- * Responsibility:
- * Convert geometry telemetry (anchor position)
- * into a normalized visual intensity signal.
- *
- * This hook does not read DOM.
- * It purely transforms metrics → presentation value.
+ * Gradient represents machine ownership (auto-follow mode).
+ * Visible when machineOwned.
+ * Hidden when userOwned.
+ * Includes grace window to prevent flicker.
  */
 export function useGradientProjection(
   observerMetrics: ObserverMetrics | null,
   layoutReady: boolean,
-  maxDistance: number = 400,
+  scrollOwner: "machineOwned" | "userOwned",
+  maxDistance: number = 500,
 ) {
-  // Final eased intensity used by UI
   const [intensity, setIntensity] = useState(0);
 
-  // Raw 0–1 normalized distance before easing
-  const [normalizedPosition, setNormalizedPosition] = useState(0);
+  const GRACE_MS = 250;
+  const hideAfterRef = useRef<number>(0);
 
   useEffect(() => {
-    // Do nothing until layout is stable and we have metrics
-    if (!layoutReady || !observerMetrics) return;
+    if (!layoutReady) return;
 
-    const { midYInViewport, viewportHeight } = observerMetrics;
+    const now = performance.now();
 
-    /**
-     * Distance between anchor midpoint and viewport bottom.
-     * When anchor approaches bottom, gradient intensity increases.
-     */
-    const distanceFromViewportBottom = viewportHeight - midYInViewport;
+    // Optional subtle geometry modulation
+    let geometryFactor = 1;
 
-    /**
-     * Normalize distance into 0–1 range.
-     * Clamped to avoid overflow.
-     */
-    const normalized = Math.max(
-      0,
-      Math.min(distanceFromViewportBottom / maxDistance, 1),
-    );
+    if (observerMetrics) {
+      const { midYInViewport, viewportHeight } = observerMetrics;
+      const distance = viewportHeight - midYInViewport;
 
-    /**
-     * Apply cubic ease-out for smoother visual falloff.
-     * Keeps interaction feeling soft instead of linear.
-     */
-    const eased = 1 - Math.pow(1 - normalized, 3);
+      const normalized = Math.max(0, Math.min(distance / maxDistance, 1));
 
-    setNormalizedPosition(normalized);
-    setIntensity(eased);
-  }, [observerMetrics, layoutReady, maxDistance]);
+      geometryFactor = 1 - Math.pow(1 - normalized, 2);
+    }
 
-  return { intensity, normalizedPosition };
+    if (scrollOwner === "machineOwned") {
+      // Machine in control → show gradient
+      hideAfterRef.current = now + GRACE_MS;
+      setIntensity(0.9 * geometryFactor); // subtle cap
+      return;
+    }
+
+    // User owns → fade out after grace
+    if (now < hideAfterRef.current) {
+      setIntensity(0.9 * geometryFactor);
+    } else {
+      setIntensity(0);
+    }
+  }, [observerMetrics, layoutReady, scrollOwner, maxDistance]);
+
+  return { intensity };
 }
