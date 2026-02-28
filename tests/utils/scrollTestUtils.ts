@@ -95,7 +95,17 @@ export async function manualScroll(page: Page, delta: number) {
       "[data-testid='scroll-viewport']",
     ) as HTMLElement;
 
+    // Simulate real wheel intent
+    el.dispatchEvent(
+      new WheelEvent("wheel", {
+        deltaY: amount,
+        bubbles: true,
+      }),
+    );
+
+    // Apply scroll movement
     el.scrollTop += amount;
+
     el.dispatchEvent(new Event("scroll"));
   }, delta);
 }

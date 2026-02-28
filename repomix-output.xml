@@ -65,8 +65,6 @@ src/
   replay.ts
   testBridge.ts
 test-results/
-  scroll.stability-gradient--f2da8-cker-off-during-auto-follow/
-    error-context.md
   .last-run.json
 tests/
   utils/
@@ -89,205 +87,6 @@ vite.config.ts
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="test-results/scroll.stability-gradient--f2da8-cker-off-during-auto-follow/error-context.md">
-# Page snapshot
-
-```yaml
-- generic [ref=e3]:
-  - generic [ref=e4]:
-    - textbox "Zero trust in microservices…" [ref=e5]: Zero trust in microservices
-    - button "Generate" [ref=e6] [cursor=pointer]
-    - button "Replay" [disabled] [ref=e7]
-  - generic [ref=e10]:
-    - generic [ref=e15]:
-      - paragraph [ref=e16]: Security Engineer
-      - generic [ref=e18]:
-        - paragraph [ref=e19]: Turn 0
-        - paragraph [ref=e20]: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
-    - generic [ref=e26]:
-      - paragraph [ref=e27]: Application Engineer
-      - generic [ref=e29]:
-        - paragraph [ref=e30]: Turn 1
-        - paragraph [ref=e31]: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
-    - generic [ref=e35]:
-      - paragraph [ref=e36]: Security Engineer
-      - generic [ref=e38]:
-        - paragraph [ref=e39]: Turn 2
-        - paragraph [ref=e40]: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
-    - generic [ref=e46]:
-      - paragraph [ref=e47]: Application Engineer
-      - generic [ref=e49]:
-        - paragraph [ref=e50]: Turn 3
-        - paragraph [ref=e51]: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
-    - generic [ref=e55]:
-      - paragraph [ref=e56]: Security Engineer
-      - generic [ref=e58]:
-        - paragraph [ref=e59]: Turn 4
-        - paragraph [ref=e60]: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
-    - generic [ref=e66]:
-      - paragraph [ref=e67]: Application Engineer
-      - generic [ref=e69]:
-        - paragraph [ref=e70]: Turn 5
-        - paragraph [ref=e71]: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
-```
-</file>
-
-<file path="tests/scroll.stability.spec.ts">
-import { test, expect, type Page } from "@playwright/test";
-import {
-  waitForAppReady,
-  appendTurns,
-  getScrollOwner,
-  isPhysicallyAtBottom,
-} from "./utils/scrollTestUtils";
-
-/* ============================================================
-   Types
-============================================================ */
-
-type Sample = {
-  scrollTop: number;
-  scrollHeight: number;
-  owner: string | null;
-  intensity: number;
-};
-
-/* ============================================================
-   Frame Sampler (Deterministic)
-============================================================ */
-
-async function sampleFrames(
-  page: Page,
-  frames: number = 100,
-  intervalMs: number = 10,
-): Promise<Sample[]> {
-  return page.evaluate(
-    async ({ frameCount, interval }) => {
-      const el = document.querySelector(
-        "[data-testid='scroll-viewport']",
-      ) as HTMLElement | null;
-
-      const grad = document.querySelector(
-        "[data-testid='background-gradient']",
-      ) as HTMLElement | null;
-
-      if (!el) throw new Error("scroll-viewport not found");
-      if (!grad) throw new Error("background-gradient not found");
-
-      const samples: Sample[] = [];
-
-      for (let i = 0; i < frameCount; i++) {
-        await new Promise<void>((resolve) => setTimeout(resolve, interval));
-
-        samples.push({
-          scrollTop: el.scrollTop,
-          scrollHeight: el.scrollHeight,
-          owner: el.getAttribute("data-scroll-owner"),
-          intensity: parseFloat(grad.getAttribute("data-intensity") ?? "0"),
-        });
-      }
-
-      return samples;
-    },
-    { frameCount: frames, interval: intervalMs },
-  );
-}
-
-/* ============================================================
-   1️⃣ Scroll Monotonicity
-============================================================ */
-
-test("auto-scroll is monotonic", async ({ page }) => {
-  await page.goto("/");
-  await waitForAppReady(page);
-  await appendTurns(page, 6);
-
-  const samples = await sampleFrames(page);
-
-  expect(samples.length).toBeGreaterThan(1);
-
-  for (let i = 1; i < samples.length; i++) {
-    const prev = samples[i - 1]!;
-    const curr = samples[i]!;
-
-    expect(curr.scrollTop).toBeGreaterThanOrEqual(prev.scrollTop - 2);
-  }
-});
-
-/* ============================================================
-   2️⃣ Ownership Stability
-============================================================ */
-
-test("machine ownership does not flip during auto-follow", async ({ page }) => {
-  await page.goto("/");
-  await waitForAppReady(page);
-  await appendTurns(page, 6);
-
-  const samples = await sampleFrames(page);
-
-  const owners = new Set(samples.map((s) => s.owner));
-  expect(owners).toEqual(new Set(["machineOwned"]));
-});
-
-/* ============================================================
-   3️⃣ Gradient Stability
-============================================================ */
-
-test("gradient does not flicker off during auto-follow", async ({ page }) => {
-  await page.goto("/");
-  await waitForAppReady(page);
-  await appendTurns(page, 6);
-
-  const samples = await sampleFrames(page);
-
-  const intensities = samples.map((s) => s.intensity);
-
-  const min = Math.min(...intensities);
-  const max = Math.max(...intensities);
-
-  expect(max).toBeGreaterThan(0.05);
-  expect(min).toBeGreaterThan(0);
-});
-
-/* ============================================================
-   4️⃣ Layout Stabilization
-============================================================ */
-
-test("scrollHeight stabilizes quickly", async ({ page }) => {
-  await page.goto("/");
-  await waitForAppReady(page);
-  await appendTurns(page, 6);
-
-  const samples = await sampleFrames(page);
-
-  let heightChanges = 0;
-
-  for (let i = 1; i < samples.length; i++) {
-    const prev = samples[i - 1]!;
-    const curr = samples[i]!;
-
-    if (Math.abs(curr.scrollHeight - prev.scrollHeight) > 5) {
-      heightChanges++;
-    }
-  }
-
-  expect(heightChanges).toBeLessThan(3);
-});
-
-/* ============================================================
-   5️⃣ End State Contract
-============================================================ */
-
-test("auto-follow ends at bottom and machineOwned", async ({ page }) => {
-  await page.goto("/");
-  await waitForAppReady(page);
-  await appendTurns(page, 6);
-
-  await expect.poll(() => isPhysicallyAtBottom(page)).toBeTruthy();
-  await expect.poll(() => getScrollOwner(page)).toBe("machineOwned");
-});
-</file>
 
 <file path="src/hooks/useViewportHeight.ts">
 import { useEffect, useState } from "react";
@@ -350,15 +149,6 @@ export type Events = {
 };
 
 export const bus = mitt<Events>();
-</file>
-
-<file path="test-results/.last-run.json">
-{
-  "status": "failed",
-  "failedTests": [
-    "814c1f12c2d091236ce7-879930acaa9fb9613fab"
-  ]
-}
 </file>
 
 <file path="tests/utils/scrollTestUtils.ts">
@@ -459,7 +249,17 @@ export async function manualScroll(page: Page, delta: number) {
       "[data-testid='scroll-viewport']",
     ) as HTMLElement;
 
+    // Simulate real wheel intent
+    el.dispatchEvent(
+      new WheelEvent("wheel", {
+        deltaY: amount,
+        bubbles: true,
+      }),
+    );
+
+    // Apply scroll movement
     el.scrollTop += amount;
+
     el.dispatchEvent(new Event("scroll"));
   }, delta);
 }
@@ -771,6 +571,162 @@ test("machineOwned ensures last bubble is fully visible", async ({ page }) => {
 });
 </file>
 
+<file path="tests/scroll.stability.spec.ts">
+import { test, expect, type Page } from "@playwright/test";
+import {
+  waitForAppReady,
+  appendTurns,
+  getScrollOwner,
+  isPhysicallyAtBottom,
+} from "./utils/scrollTestUtils";
+
+/* ============================================================
+   Types
+============================================================ */
+
+type Sample = {
+  scrollTop: number;
+  scrollHeight: number;
+  owner: string | null;
+  intensity: number;
+};
+
+/* ============================================================
+   Frame Sampler (Deterministic)
+============================================================ */
+
+async function sampleFrames(
+  page: Page,
+  frames: number = 100,
+  intervalMs: number = 10,
+): Promise<Sample[]> {
+  return page.evaluate(
+    async ({ frameCount, interval }) => {
+      const el = document.querySelector(
+        "[data-testid='scroll-viewport']",
+      ) as HTMLElement | null;
+
+      const grad = document.querySelector(
+        "[data-testid='background-gradient']",
+      ) as HTMLElement | null;
+
+      if (!el) throw new Error("scroll-viewport not found");
+      if (!grad) throw new Error("background-gradient not found");
+
+      const samples: Sample[] = [];
+
+      for (let i = 0; i < frameCount; i++) {
+        await new Promise<void>((resolve) => setTimeout(resolve, interval));
+
+        samples.push({
+          scrollTop: el.scrollTop,
+          scrollHeight: el.scrollHeight,
+          owner: el.getAttribute("data-scroll-owner"),
+          intensity: parseFloat(grad.getAttribute("data-intensity") ?? "0"),
+        });
+      }
+
+      return samples;
+    },
+    { frameCount: frames, interval: intervalMs },
+  );
+}
+
+/* ============================================================
+   1️⃣ Scroll Monotonicity
+============================================================ */
+
+test("auto-scroll is monotonic", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await appendTurns(page, 6);
+
+  const samples = await sampleFrames(page);
+
+  expect(samples.length).toBeGreaterThan(1);
+
+  for (let i = 1; i < samples.length; i++) {
+    const prev = samples[i - 1]!;
+    const curr = samples[i]!;
+
+    expect(curr.scrollTop).toBeGreaterThanOrEqual(prev.scrollTop - 2);
+  }
+});
+
+/* ============================================================
+   2️⃣ Ownership Stability
+============================================================ */
+
+test("machine ownership does not flip during auto-follow", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await appendTurns(page, 6);
+
+  const samples = await sampleFrames(page);
+
+  const owners = new Set(samples.map((s) => s.owner));
+  expect(owners).toEqual(new Set(["machineOwned"]));
+});
+
+/* ============================================================
+   3️⃣ Gradient Stability
+============================================================ */
+
+test("gradient does not flicker off during auto-follow", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await appendTurns(page, 6);
+
+  const samples = await sampleFrames(page);
+
+  const intensities = samples.map((s) => s.intensity);
+
+  const min = Math.min(...intensities);
+  const max = Math.max(...intensities);
+
+  expect(max).toBeGreaterThan(0.05);
+  expect(min).toBeGreaterThan(0);
+});
+
+/* ============================================================
+   4️⃣ Layout Stabilization
+============================================================ */
+
+test("scrollHeight stabilizes quickly", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await appendTurns(page, 6);
+
+  const samples = await sampleFrames(page);
+
+  let heightChanges = 0;
+
+  for (let i = 1; i < samples.length; i++) {
+    const prev = samples[i - 1]!;
+    const curr = samples[i]!;
+
+    if (Math.abs(curr.scrollHeight - prev.scrollHeight) > 5) {
+      heightChanges++;
+    }
+  }
+
+  expect(heightChanges).toBeLessThan(3);
+});
+
+/* ============================================================
+   5️⃣ End State Contract
+============================================================ */
+
+test("auto-follow ends at bottom and machineOwned", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await appendTurns(page, 6);
+
+  await expect.poll(() => isPhysicallyAtBottom(page)).toBeTruthy();
+  await expect.poll(() => getScrollOwner(page)).toBe("machineOwned");
+});
+</file>
+
 <file path=".gitignore">
 # dependencies (bun install)
 node_modules
@@ -861,97 +817,6 @@ export default defineConfig({
     },
   },
 });
-</file>
-
-<file path="src/fixtures/dialogue.json">
-{
-  "topic": "Zero trust in microservices",
-  "turns": [
-    {
-      "speaker": "security_engineer",
-      "mdx": "## Assume breach, design for blast radius\n- mTLS on every hop\n- Per-service identity via SPIFFE\n- Deny-by-default egress via a proxy\nWhat happens when the noisiest service gets popped and the network is flat? Without uniform guardrails, lateral movement is trivial."
-    },
-    {
-      "speaker": "application_engineer",
-      "mdx": "## We need velocity\nFull mesh + heavy policy on day one will kneecap devs. Latency, sidecars, cert churn.\n- JWT at the edge via gateway\n- mTLS only for critical paths first\n- Audit policies before enforce\nDo we really need uniform everywhere before we ship anything?"
-    },
-    {
-      "speaker": "security_engineer",
-      "mdx": "## Weakest link, biggest blast\nYour plan leaves soft targets attackers pivot through. Partial zero trust is zero trust in name only.\n- Uniform mTLS cuts lateral paths\n- Consider eBPF node agents if sidecars hurt\nAssume compromise; minimize blast radius uniformly."
-    },
-    {
-      "speaker": "application_engineer",
-      "mdx": "## Scope and stage, not stall\nI can accept uniform identity (SPIFFE), but keep authz coarse (RBAC) first. Canary enforcement, dev permissive, prod strict.\n```yaml\nallow: serviceA->serviceB if scope: orders\n```\nLet’s harden iteratively while we keep features moving."
-    },
-    {
-      "speaker": "security_engineer",
-      "mdx": "## Non‑negotiables, with guardrails\n- Workload identity + mTLS by default\n- Deny‑by‑default east‑west\n- Egress allowlist with logged break‑glass\n```mermaid\nflowchart LR\nClient-->Gateway\nGateway-->A\nA-->Policy\nPolicy-->B\n```\nPut a policy engine on every hop; no silent bypass."
-    },
-    {
-      "speaker": "application_engineer",
-      "mdx": "## Deal—platform owns the pain\nI’ll take your must‑haves if the platform handles it:\n- Automated certs/rotation and golden sidecar or node agent\n- Policy templates, tests in pipeline, clear defaults\n- Escape hatch with SLO‑based review\nWe move fast, you get uniform guardrails. Tension stays healthy."
-    }
-  ]
-}
-</file>
-
-<file path="src/hooks/useGradientProjection.ts">
-import { useEffect, useRef, useState } from "react";
-import type { ObserverMetrics } from "./useObserverAnchor";
-
-/**
- * useGradientProjection
- *
- * Gradient represents machine ownership (auto-follow mode).
- * Visible when machineOwned.
- * Hidden when userOwned.
- * Includes grace window to prevent flicker.
- */
-export function useGradientProjection(
-  observerMetrics: ObserverMetrics | null,
-  layoutReady: boolean,
-  scrollOwner: "machineOwned" | "userOwned",
-  maxDistance: number = 500,
-) {
-  const [intensity, setIntensity] = useState(0);
-
-  const GRACE_MS = 250;
-  const hideAfterRef = useRef<number>(0);
-
-  useEffect(() => {
-    if (!layoutReady) return;
-
-    const now = performance.now();
-
-    // Optional subtle geometry modulation
-    let geometryFactor = 1;
-
-    if (observerMetrics) {
-      const { midYInViewport, viewportHeight } = observerMetrics;
-      const distance = viewportHeight - midYInViewport;
-
-      const normalized = Math.max(0, Math.min(distance / maxDistance, 1));
-
-      geometryFactor = 1 - Math.pow(1 - normalized, 2);
-    }
-
-    if (scrollOwner === "machineOwned") {
-      // Machine in control → show gradient
-      hideAfterRef.current = now + GRACE_MS;
-      setIntensity(0.9 * geometryFactor); // subtle cap
-      return;
-    }
-
-    // User owns → fade out after grace
-    if (now < hideAfterRef.current) {
-      setIntensity(0.9 * geometryFactor);
-    } else {
-      setIntensity(0);
-    }
-  }, [observerMetrics, layoutReady, scrollOwner, maxDistance]);
-
-  return { intensity };
-}
 </file>
 
 <file path="src/hooks/useLayoutStable.ts">
@@ -1321,6 +1186,13 @@ export function installTestBridge() {
 }
 </file>
 
+<file path="test-results/.last-run.json">
+{
+  "status": "passed",
+  "failedTests": []
+}
+</file>
+
 <file path="flake.lock">
 {
   "nodes": {
@@ -1484,94 +1356,6 @@ export function installTestBridge() {
 }
 </file>
 
-<file path="shared/schemas.ts">
-// shared/schemas.ts
-import { z } from "zod";
-
-/* ============================================================
-   Constants
-============================================================ */
-
-const MAX_MDX_LENGTH = 500; // Hard cap per turn (tight + demo-safe)
-const MAX_MERMAID_BLOCK_LENGTH = 300; // Diagram can never dominate the turn
-const MAX_TOPIC_LENGTH = 160; // Enough for specificity, prevents rambling
-
-/* ============================================================
-   Prompt Input
-============================================================ */
-
-export const PromptRequestSchema = z.object({
-  prompt: z.string().min(1).max(300),
-});
-
-/* ============================================================
-   Speakers
-============================================================ */
-
-export const SpeakerSchema = z.enum([
-  "security_engineer",
-  "application_engineer",
-]);
-
-export type Speaker = z.infer<typeof SpeakerSchema>;
-
-/* ============================================================
-   Mermaid Validation
-============================================================ */
-
-function validateMermaidBlocks(text: string) {
-  const blocks = text.match(/```mermaid[\s\S]*?```/g);
-  if (!blocks) return true;
-
-  return blocks.every((block) => {
-    // Size constraint
-    if (block.length > MAX_MERMAID_BLOCK_LENGTH) return false;
-
-    // Must begin with flowchart LR
-    if (!block.includes("flowchart LR")) return false;
-
-    // Basic forbidden constructs
-    if (
-      block.includes("click ") ||
-      block.includes("classDef") ||
-      block.includes("note over") ||
-      block.includes("sequenceDiagram")
-    ) {
-      return false;
-    }
-
-    return true;
-  });
-}
-
-/* ============================================================
-   Turn Schema
-============================================================ */
-
-export const TurnSchema = z.object({
-  speaker: SpeakerSchema,
-
-  mdx: z.string().min(1).max(MAX_MDX_LENGTH).refine(validateMermaidBlocks, {
-    message: "Invalid or oversized mermaid diagram block",
-  }),
-});
-
-export type Turn = z.infer<typeof TurnSchema>;
-
-/* ============================================================
-   Dialogue Root
-============================================================ */
-
-export const DialogueSchema = z.object({
-  topic: z.string().min(1).max(MAX_TOPIC_LENGTH),
-
-  // Tighten to match system prompt (6–10)
-  turns: z.array(TurnSchema).min(6).max(10),
-});
-
-export type Dialogue = z.infer<typeof DialogueSchema>;
-</file>
-
 <file path="src/components/MdxRenderer.tsx">
 import React from "react";
 import { Box } from "@chakra-ui/react";
@@ -1618,127 +1402,35 @@ export function MdxRenderer({ content }: { content: string }) {
 }
 </file>
 
-<file path="src/hooks/useAutoScroll.ts">
-import { useLayoutEffect, useRef } from "react";
-
-function easeOutCubic(t: number) {
-  return 1 - Math.pow(1 - t, 3);
-}
-
-export function useAutoScroll(
-  scrollRef: React.RefObject<HTMLDivElement | null>,
-  blocksLength: number,
-  scrollOwner: "machineOwned" | "userOwned",
-  layoutReady: boolean,
-) {
-  const prevLengthRef = useRef(blocksLength);
-  const pendingScrollRef = useRef(false);
-  const restoringRef = useRef(false);
-  const rafRef = useRef<number | null>(null);
-
-  // ✅ Avoid stale-closure issues inside rAF
-  const ownerRef = useRef(scrollOwner);
-  ownerRef.current = scrollOwner;
-
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const cancel = () => {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-      restoringRef.current = false;
-    };
-
-    /* ------------------------------------------------------------
-       Phase 1 — Detect Content Growth
-    ------------------------------------------------------------ */
-
-    if (blocksLength !== prevLengthRef.current) {
-      prevLengthRef.current = blocksLength;
-
-      if (scrollOwner === "machineOwned") {
-        pendingScrollRef.current = true;
-      }
+<file path="src/fixtures/dialogue.json">
+{
+  "topic": "Zero trust in microservices",
+  "turns": [
+    {
+      "speaker": "security_engineer",
+      "mdx": "## Assume breach, design for blast radius\n- mTLS on every hop\n- Per-service identity via SPIFFE\n- Deny-by-default egress via a proxy\nWhat happens when the noisiest service gets popped and the network is flat? Without uniform guardrails, lateral movement is trivial."
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "## We need velocity\nFull mesh + heavy policy on day one will kneecap devs. Latency, sidecars, cert churn.\n- JWT at the edge via gateway\n- mTLS only for critical paths first\n- Audit policies before enforce\nDo we really need uniform everywhere before we ship anything?"
+    },
+    {
+      "speaker": "security_engineer",
+      "mdx": "## Weakest link, biggest blast\nYour plan leaves soft targets attackers pivot through. Partial zero trust is zero trust in name only.\n- Uniform mTLS cuts lateral paths\n- Consider eBPF node agents if sidecars hurt\nAssume compromise; minimize blast radius uniformly."
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "## Scope and stage, not stall\nI can accept uniform identity (SPIFFE), but keep authz coarse (RBAC) first. Canary enforcement, dev permissive, prod strict.\n```yaml\nallow: serviceA->serviceB if scope: orders\n```\nLet’s harden iteratively while we keep features moving."
+    },
+    {
+      "speaker": "security_engineer",
+      "mdx": "## Non‑negotiables, with guardrails\n- Workload identity + mTLS by default\n- Deny‑by‑default east‑west\n- Egress allowlist with logged break‑glass\n```mermaid\nflowchart LR\nClient-->Gateway\nGateway-->A\nA-->Policy\nPolicy-->B\n```\nPut a policy engine on every hop; no silent bypass."
+    },
+    {
+      "speaker": "application_engineer",
+      "mdx": "## Deal—platform owns the pain\nI’ll take your must‑haves if the platform handles it:\n- Automated certs/rotation and golden sidecar or node agent\n- Policy templates, tests in pipeline, clear defaults\n- Escape hatch with SLO‑based review\nWe move fast, you get uniform guardrails. Tension stays healthy."
     }
-
-    /* ------------------------------------------------------------
-       Phase 2 — Execute Scroll
-    ------------------------------------------------------------ */
-
-    if (
-      layoutReady &&
-      pendingScrollRef.current &&
-      scrollOwner === "machineOwned"
-    ) {
-      pendingScrollRef.current = false;
-
-      // Always cancel any prior animation before starting a new one
-      cancel();
-
-      const start = el.scrollTop;
-
-      // ✅ Correct "bottom" scrollTop target
-      const target = Math.max(0, el.scrollHeight - el.clientHeight);
-
-      // Nothing to do
-      if (Math.abs(target - start) < 1) {
-        restoringRef.current = false;
-        return;
-      }
-
-      restoringRef.current = true;
-
-      const isTest = import.meta.env.MODE === "test";
-      if (isTest) {
-        el.scrollTop = target;
-        restoringRef.current = false;
-        return;
-      }
-
-      const duration = 700; // ms
-      const startTime = performance.now();
-
-      const animate = (now: number) => {
-        const currentEl = scrollRef.current;
-
-        // If we lost the element, don't leave restoring stuck true
-        if (!currentEl) {
-          cancel();
-          return;
-        }
-
-        // Abort if ownership changed mid-animation
-        if (ownerRef.current !== "machineOwned") {
-          cancel();
-          return;
-        }
-
-        const elapsed = now - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        const eased = easeOutCubic(progress);
-
-        const next = start + (target - start) * eased;
-        currentEl.scrollTop = next;
-
-        if (progress < 1) {
-          rafRef.current = requestAnimationFrame(animate);
-        } else {
-          currentEl.scrollTop = target; // guarantee exact bottom
-          cancel();
-        }
-      };
-
-      rafRef.current = requestAnimationFrame(animate);
-    }
-
-    // ✅ Critical for StrictMode: cleanup must clear restoringRef
-    return () => cancel();
-  }, [blocksLength, layoutReady, scrollOwner, scrollRef]);
-
-  return restoringRef;
+  ]
 }
 </file>
 
@@ -1941,147 +1633,113 @@ export function useDebateProjection() {
 }
 </file>
 
-<file path="src/hooks/useScrollOwnership.ts">
-import { useEffect, useRef } from "react";
-import type { AnyActorRef } from "xstate";
+<file path="src/hooks/useGradientProjection.ts">
+import { useEffect, useRef, useState } from "react";
 
-export function useScrollOwnership(
-  send: AnyActorRef["send"],
+export function useGradientProjection(
   scrollRef: React.RefObject<HTMLDivElement | null>,
+  layoutReady: boolean,
+  scrollOwner: "machineOwned" | "userOwned",
   restoringRef: React.MutableRefObject<boolean>,
+  maxDistance: number = 400,
 ) {
-  const lastAtBottomRef = useRef<boolean | null>(null);
-  const lastScrollTopRef = useRef<number>(0);
+  const [intensity, setIntensity] = useState(1);
 
-  /* ------------------------------------------------------------
-     User Intent Detection
-  ------------------------------------------------------------ */
+  const GRACE_MS = 200;
 
-  const USER_INTENT_WINDOW_MS = 200;
-  const GRACE_MS = 250;
+  const graceUntilRef = useRef<number>(0);
+  const prevOwnerRef = useRef(scrollOwner);
 
-  const lastUserIntentRef = useRef<number>(0);
-  const ignoreUntilRef = useRef<number>(0);
-  const wasRestoringRef = useRef<boolean>(false);
-
-  const registerUserIntent = () => {
-    lastUserIntentRef.current = performance.now();
-  };
+  const intensityRef = useRef(1);
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (!layoutReady) return;
+
     const el = scrollRef.current;
     if (!el) return;
 
-    el.addEventListener("wheel", registerUserIntent, { passive: true });
-    el.addEventListener("touchstart", registerUserIntent, { passive: true });
-    el.addEventListener("touchmove", registerUserIntent, { passive: true });
+    const now = performance.now();
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowUp" || e.key === "PageUp" || e.key === "Home") {
-        registerUserIntent();
+    // Detect ownership transition
+    if (prevOwnerRef.current !== scrollOwner) {
+      if (scrollOwner === "userOwned") {
+        graceUntilRef.current = now + GRACE_MS;
       }
-    };
+      prevOwnerRef.current = scrollOwner;
+    }
 
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      el.removeEventListener("wheel", registerUserIntent);
-      el.removeEventListener("touchstart", registerUserIntent);
-      el.removeEventListener("touchmove", registerUserIntent);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [scrollRef]);
-
-  /* ------------------------------------------------------------
-     Scroll Ownership Detection
-  ------------------------------------------------------------ */
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const checkOwnership = () => {
-      const currentScrollTop = el.scrollTop;
-
-      const atBottom =
-        currentScrollTop + el.clientHeight >= el.scrollHeight - 5;
-
-      const delta = currentScrollTop - lastScrollTopRef.current;
-      const significantMove = Math.abs(delta) > 4;
-      const scrollingUp = delta < -4;
-
-      lastScrollTopRef.current = currentScrollTop;
-
-      const now = performance.now();
-      const userRecentlyInteracted =
-        now - lastUserIntentRef.current < USER_INTENT_WINDOW_MS;
-
-      const inGraceWindow = now < ignoreUntilRef.current;
-
-      // Detect restore completion → extend grace
-      const isRestoring = restoringRef.current;
-      if (wasRestoringRef.current && !isRestoring) {
-        ignoreUntilRef.current = now + GRACE_MS;
+    const lerpTo = (target: number, smoothing = 0.08) => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
       }
-      wasRestoringRef.current = isRestoring;
 
-      console.log("[ownership check]", {
-        scrollTop: currentScrollTop,
-        delta,
-        scrollingUp,
-        significantMove,
-        atBottom,
-        restoring: isRestoring,
-        userRecentlyInteracted,
-        inGraceWindow,
-      });
+      const animate = () => {
+        const current = intensityRef.current;
+        const next = current + (target - current) * smoothing;
 
-      // Suppress during machine restore
-      if (isRestoring) return;
+        intensityRef.current = next;
+        setIntensity(next);
 
-      /* ------------------------------------------------------------
-         Case 1: Upward scroll WITH user intent + outside grace
-      ------------------------------------------------------------ */
-
-      if (
-        !atBottom &&
-        scrollingUp &&
-        significantMove &&
-        userRecentlyInteracted &&
-        !inGraceWindow
-      ) {
-        if (lastAtBottomRef.current !== false) {
-          lastAtBottomRef.current = false;
-          send({ type: "USER_SCROLLED_UP" });
+        if (Math.abs(next - target) > 0.002) {
+          rafRef.current = requestAnimationFrame(animate);
+        } else {
+          intensityRef.current = target;
+          setIntensity(target);
         }
+      };
+
+      rafRef.current = requestAnimationFrame(animate);
+    };
+
+    const update = () => {
+      const now = performance.now();
+
+      // 🔥 Machine override: snap to full intensity
+      if (scrollOwner === "machineOwned") {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        intensityRef.current = 1;
+        setIntensity(1);
         return;
       }
 
-      /* ------------------------------------------------------------
-         Case 2: Reached bottom
-      ------------------------------------------------------------ */
-
-      if (atBottom) {
-        if (lastAtBottomRef.current !== true) {
-          lastAtBottomRef.current = true;
-          ignoreUntilRef.current = now + GRACE_MS; // small buffer
-          send({ type: "USER_AT_BOTTOM" });
-        }
+      // 🔥 Suppress fade during restore
+      if (restoringRef.current) {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        intensityRef.current = 1;
+        setIntensity(1);
+        return;
       }
+
+      // 🔥 Grace window after ownership change
+      if (now < graceUntilRef.current) {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        intensityRef.current = 1;
+        setIntensity(1);
+        return;
+      }
+
+      // 🔥 Continuous geometric fade
+      const distance = el.scrollHeight - (el.scrollTop + el.clientHeight);
+
+      const normalized = Math.max(0, Math.min(distance / maxDistance, 1));
+
+      const target = 1 - normalized;
+
+      // Smoothly approach target
+      lerpTo(target);
     };
 
-    el.addEventListener("scroll", checkOwnership, { passive: true });
-
-    lastScrollTopRef.current = el.scrollTop;
-    lastAtBottomRef.current =
-      el.scrollTop + el.clientHeight >= el.scrollHeight - 5;
-
-    checkOwnership();
+    update();
+    el.addEventListener("scroll", update, { passive: true });
 
     return () => {
-      el.removeEventListener("scroll", checkOwnership);
+      el.removeEventListener("scroll", update);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [send, scrollRef, restoringRef]);
+  }, [layoutReady, scrollOwner, scrollRef, restoringRef, maxDistance]);
+
+  return { intensity };
 }
 </file>
 
@@ -2284,6 +1942,375 @@ export const debateMachine = setup({
         };
       }
     );
+}
+</file>
+
+<file path="shared/schemas.ts">
+// shared/schemas.ts
+import { z } from "zod";
+
+/* ============================================================
+   Constants
+============================================================ */
+
+const MAX_MDX_LENGTH = 500; // Hard cap per turn (tight + demo-safe)
+const MAX_MERMAID_BLOCK_LENGTH = 300; // Diagram can never dominate the turn
+const MAX_TOPIC_LENGTH = 160; // Enough for specificity, prevents rambling
+
+/* ============================================================
+   Prompt Input
+============================================================ */
+
+export const PromptRequestSchema = z.object({
+  prompt: z.string().min(1).max(300),
+});
+
+/* ============================================================
+   Speakers
+============================================================ */
+
+export const SpeakerSchema = z.enum([
+  "security_engineer",
+  "application_engineer",
+]);
+
+export type Speaker = z.infer<typeof SpeakerSchema>;
+
+/* ============================================================
+   Mermaid Validation
+============================================================ */
+
+function validateMermaidBlocks(text: string) {
+  const blocks = text.match(/```mermaid[\s\S]*?```/g);
+  if (!blocks) return true;
+
+  return blocks.every((block) => {
+    // Size constraint
+    if (block.length > MAX_MERMAID_BLOCK_LENGTH) return false;
+
+    // Must begin with flowchart LR
+    if (!block.includes("flowchart LR")) return false;
+
+    // Basic forbidden constructs
+    if (
+      block.includes("click ") ||
+      block.includes("classDef") ||
+      block.includes("note over") ||
+      block.includes("sequenceDiagram")
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+/* ============================================================
+   Turn Schema
+============================================================ */
+
+export const TurnSchema = z.object({
+  speaker: SpeakerSchema,
+
+  mdx: z.string().min(1).max(MAX_MDX_LENGTH).refine(validateMermaidBlocks, {
+    message: "Invalid or oversized mermaid diagram block",
+  }),
+});
+
+export type Turn = z.infer<typeof TurnSchema>;
+
+/* ============================================================
+   Dialogue Root
+============================================================ */
+
+export const DialogueSchema = z.object({
+  topic: z.string().min(1).max(MAX_TOPIC_LENGTH),
+
+  // Tighten to match system prompt (6–10)
+  turns: z.array(TurnSchema).min(6).max(10),
+});
+
+export type Dialogue = z.infer<typeof DialogueSchema>;
+</file>
+
+<file path="src/hooks/useAutoScroll.ts">
+import { useLayoutEffect, useRef } from "react";
+
+function easeOutCubic(t: number) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+export function useAutoScroll(
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  blocksLength: number,
+  scrollOwner: "machineOwned" | "userOwned",
+  layoutReady: boolean,
+) {
+  const prevLengthRef = useRef(blocksLength);
+  const pendingScrollRef = useRef(false);
+  const restoringRef = useRef(false);
+  const rafRef = useRef<number | null>(null);
+
+  // ✅ Avoid stale-closure issues inside rAF
+  const ownerRef = useRef(scrollOwner);
+  ownerRef.current = scrollOwner;
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const cancel = () => {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      restoringRef.current = false;
+    };
+
+    /* ------------------------------------------------------------
+       Phase 1 — Detect Content Growth
+    ------------------------------------------------------------ */
+
+    if (blocksLength !== prevLengthRef.current) {
+      prevLengthRef.current = blocksLength;
+
+      if (scrollOwner === "machineOwned") {
+        pendingScrollRef.current = true;
+      }
+    }
+
+    /* ------------------------------------------------------------
+       Phase 2 — Execute Scroll
+    ------------------------------------------------------------ */
+
+    if (
+      layoutReady &&
+      pendingScrollRef.current &&
+      scrollOwner === "machineOwned"
+    ) {
+      pendingScrollRef.current = false;
+
+      // Always cancel any prior animation before starting a new one
+      cancel();
+
+      const start = el.scrollTop;
+
+      // ✅ Correct "bottom" scrollTop target
+      const target = Math.max(0, el.scrollHeight - el.clientHeight);
+
+      // Nothing to do
+      if (Math.abs(target - start) < 1) {
+        restoringRef.current = false;
+        return;
+      }
+
+      restoringRef.current = true;
+
+      const isTest = import.meta.env.MODE === "test";
+      if (isTest) {
+        el.scrollTop = target;
+        restoringRef.current = false;
+        return;
+      }
+
+      const duration = 700; // ms
+      const startTime = performance.now();
+
+      const animate = (now: number) => {
+        const currentEl = scrollRef.current;
+
+        // If we lost the element, don't leave restoring stuck true
+        if (!currentEl) {
+          cancel();
+          return;
+        }
+
+        // Abort if ownership changed mid-animation
+        if (ownerRef.current !== "machineOwned") {
+          cancel();
+          return;
+        }
+
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = easeOutCubic(progress);
+
+        const next = start + (target - start) * eased;
+        currentEl.scrollTop = next;
+
+        if (progress < 1) {
+          rafRef.current = requestAnimationFrame(animate);
+        } else {
+          currentEl.scrollTop = target; // guarantee exact bottom
+          cancel();
+        }
+      };
+
+      rafRef.current = requestAnimationFrame(animate);
+    }
+
+    // ✅ Critical for StrictMode: cleanup must clear restoringRef
+    return () => cancel();
+  }, [blocksLength, layoutReady, scrollOwner, scrollRef]);
+
+  return restoringRef;
+}
+</file>
+
+<file path="src/hooks/useScrollOwnership.ts">
+import { useEffect, useRef, useState } from "react";
+import type { AnyActorRef } from "xstate";
+
+export function useScrollOwnership(
+  send: AnyActorRef["send"],
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  restoringRef: React.MutableRefObject<boolean>,
+) {
+  const lastAtBottomRef = useRef<boolean | null>(null);
+  const lastScrollTopRef = useRef<number>(0);
+
+  // 🔥 New: upward scroll signal for projection layer
+  const [isUserScrollingUp, setIsUserScrollingUp] = useState(false);
+
+  /* ------------------------------------------------------------
+     User Intent Detection
+  ------------------------------------------------------------ */
+
+  const USER_INTENT_WINDOW_MS = 200;
+  const GRACE_MS = 250;
+
+  const lastUserIntentRef = useRef<number>(0);
+  const ignoreUntilRef = useRef<number>(0);
+  const wasRestoringRef = useRef<boolean>(false);
+
+  const registerUserIntent = () => {
+    lastUserIntentRef.current = performance.now();
+  };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    el.addEventListener("wheel", registerUserIntent, { passive: true });
+    el.addEventListener("touchstart", registerUserIntent, { passive: true });
+    el.addEventListener("touchmove", registerUserIntent, { passive: true });
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowUp" || e.key === "PageUp" || e.key === "Home") {
+        registerUserIntent();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      el.removeEventListener("wheel", registerUserIntent);
+      el.removeEventListener("touchstart", registerUserIntent);
+      el.removeEventListener("touchmove", registerUserIntent);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [scrollRef]);
+
+  /* ------------------------------------------------------------
+     Scroll Ownership Detection
+  ------------------------------------------------------------ */
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const checkOwnership = () => {
+      const currentScrollTop = el.scrollTop;
+
+      const atBottom =
+        currentScrollTop + el.clientHeight >= el.scrollHeight - 5;
+
+      const delta = currentScrollTop - lastScrollTopRef.current;
+      const significantMove = Math.abs(delta) > 4;
+      const scrollingUp = delta < -4;
+
+      lastScrollTopRef.current = currentScrollTop;
+
+      const now = performance.now();
+      const userRecentlyInteracted =
+        now - lastUserIntentRef.current < USER_INTENT_WINDOW_MS;
+
+      const inGraceWindow = now < ignoreUntilRef.current;
+
+      const isRestoring = restoringRef.current;
+
+      // Detect restore completion → extend grace
+      if (wasRestoringRef.current && !isRestoring) {
+        ignoreUntilRef.current = now + GRACE_MS;
+      }
+      wasRestoringRef.current = isRestoring;
+
+      /* ------------------------------------------------------------
+         🔥 Projection Signal (independent of machine transition)
+      ------------------------------------------------------------ */
+
+      if (
+        scrollingUp &&
+        significantMove &&
+        userRecentlyInteracted &&
+        !isRestoring
+      ) {
+        setIsUserScrollingUp(true);
+      } else {
+        setIsUserScrollingUp(false);
+      }
+
+      /* ------------------------------------------------------------
+         Suppress ownership transitions during restore
+      ------------------------------------------------------------ */
+
+      if (isRestoring) return;
+
+      /* ------------------------------------------------------------
+         Case 1: Upward scroll WITH user intent + outside grace
+      ------------------------------------------------------------ */
+
+      if (
+        !atBottom &&
+        scrollingUp &&
+        significantMove &&
+        userRecentlyInteracted &&
+        !inGraceWindow
+      ) {
+        if (lastAtBottomRef.current !== false) {
+          lastAtBottomRef.current = false;
+          send({ type: "USER_SCROLLED_UP" });
+        }
+        return;
+      }
+
+      /* ------------------------------------------------------------
+         Case 2: Reached bottom
+      ------------------------------------------------------------ */
+
+      if (atBottom) {
+        if (lastAtBottomRef.current !== true) {
+          lastAtBottomRef.current = true;
+          ignoreUntilRef.current = now + GRACE_MS;
+          send({ type: "USER_AT_BOTTOM" });
+        }
+      }
+    };
+
+    el.addEventListener("scroll", checkOwnership, { passive: true });
+
+    lastScrollTopRef.current = el.scrollTop;
+    lastAtBottomRef.current =
+      el.scrollTop + el.clientHeight >= el.scrollHeight - 5;
+
+    checkOwnership();
+
+    return () => {
+      el.removeEventListener("scroll", checkOwnership);
+    };
+  }, [send, scrollRef, restoringRef]);
+
+  return isUserScrollingUp;
 }
 </file>
 
@@ -2779,7 +2806,7 @@ export function App({ inspector }: { inspector?: any }) {
       ? state.value.scroll
       : "machineOwned";
 
-  // 🔥 Trigger auto-scroll on layoutVersion change
+  // Auto-scroll imperative layer
   const restoringRef = useAutoScroll(
     scrollRef,
     layoutVersion,
@@ -2787,13 +2814,16 @@ export function App({ inspector }: { inspector?: any }) {
     layoutReady,
   );
 
+  // Control-plane ownership detection
+  useScrollOwnership(send, scrollRef, restoringRef);
+
+  // Visual projection layer
   const { intensity } = useGradientProjection(
-    observerMetrics,
+    scrollRef,
     layoutReady,
     scrollOwner,
+    restoringRef,
   );
-
-  useScrollOwnership(send, scrollRef, restoringRef);
 
   return (
     <Box

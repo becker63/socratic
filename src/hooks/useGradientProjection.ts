@@ -1,56 +1,107 @@
 import { useEffect, useRef, useState } from "react";
-import type { ObserverMetrics } from "./useObserverAnchor";
 
-/**
- * useGradientProjection
- *
- * Gradient represents machine ownership (auto-follow mode).
- * Visible when machineOwned.
- * Hidden when userOwned.
- * Includes grace window to prevent flicker.
- */
 export function useGradientProjection(
-  observerMetrics: ObserverMetrics | null,
+  scrollRef: React.RefObject<HTMLDivElement | null>,
   layoutReady: boolean,
   scrollOwner: "machineOwned" | "userOwned",
-  maxDistance: number = 500,
+  restoringRef: React.MutableRefObject<boolean>,
+  maxDistance: number = 400,
 ) {
-  const [intensity, setIntensity] = useState(0);
+  const [intensity, setIntensity] = useState(1);
 
-  const GRACE_MS = 250;
-  const hideAfterRef = useRef<number>(0);
+  const GRACE_MS = 200;
+
+  const graceUntilRef = useRef<number>(0);
+  const prevOwnerRef = useRef(scrollOwner);
+
+  const intensityRef = useRef(1);
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!layoutReady) return;
 
+    const el = scrollRef.current;
+    if (!el) return;
+
     const now = performance.now();
 
-    // Optional subtle geometry modulation
-    let geometryFactor = 1;
+    // Detect ownership transition
+    if (prevOwnerRef.current !== scrollOwner) {
+      if (scrollOwner === "userOwned") {
+        graceUntilRef.current = now + GRACE_MS;
+      }
+      prevOwnerRef.current = scrollOwner;
+    }
 
-    if (observerMetrics) {
-      const { midYInViewport, viewportHeight } = observerMetrics;
-      const distance = viewportHeight - midYInViewport;
+    const lerpTo = (target: number, smoothing = 0.08) => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+
+      const animate = () => {
+        const current = intensityRef.current;
+        const next = current + (target - current) * smoothing;
+
+        intensityRef.current = next;
+        setIntensity(next);
+
+        if (Math.abs(next - target) > 0.002) {
+          rafRef.current = requestAnimationFrame(animate);
+        } else {
+          intensityRef.current = target;
+          setIntensity(target);
+        }
+      };
+
+      rafRef.current = requestAnimationFrame(animate);
+    };
+
+    const update = () => {
+      const now = performance.now();
+
+      // 🔥 Machine override: snap to full intensity
+      if (scrollOwner === "machineOwned") {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        intensityRef.current = 1;
+        setIntensity(1);
+        return;
+      }
+
+      // 🔥 Suppress fade during restore
+      if (restoringRef.current) {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        intensityRef.current = 1;
+        setIntensity(1);
+        return;
+      }
+
+      // 🔥 Grace window after ownership change
+      if (now < graceUntilRef.current) {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        intensityRef.current = 1;
+        setIntensity(1);
+        return;
+      }
+
+      // 🔥 Continuous geometric fade
+      const distance = el.scrollHeight - (el.scrollTop + el.clientHeight);
 
       const normalized = Math.max(0, Math.min(distance / maxDistance, 1));
 
-      geometryFactor = 1 - Math.pow(1 - normalized, 2);
-    }
+      const target = 1 - normalized;
 
-    if (scrollOwner === "machineOwned") {
-      // Machine in control → show gradient
-      hideAfterRef.current = now + GRACE_MS;
-      setIntensity(0.9 * geometryFactor); // subtle cap
-      return;
-    }
+      // Smoothly approach target
+      lerpTo(target);
+    };
 
-    // User owns → fade out after grace
-    if (now < hideAfterRef.current) {
-      setIntensity(0.9 * geometryFactor);
-    } else {
-      setIntensity(0);
-    }
-  }, [observerMetrics, layoutReady, scrollOwner, maxDistance]);
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+
+    return () => {
+      el.removeEventListener("scroll", update);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [layoutReady, scrollOwner, scrollRef, restoringRef, maxDistance]);
 
   return { intensity };
 }

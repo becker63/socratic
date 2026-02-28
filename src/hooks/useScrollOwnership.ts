@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AnyActorRef } from "xstate";
 
 export function useScrollOwnership(
@@ -8,6 +8,9 @@ export function useScrollOwnership(
 ) {
   const lastAtBottomRef = useRef<boolean | null>(null);
   const lastScrollTopRef = useRef<number>(0);
+
+  // 🔥 New: upward scroll signal for projection layer
+  const [isUserScrollingUp, setIsUserScrollingUp] = useState(false);
 
   /* ------------------------------------------------------------
      User Intent Detection
@@ -74,25 +77,33 @@ export function useScrollOwnership(
 
       const inGraceWindow = now < ignoreUntilRef.current;
 
-      // Detect restore completion → extend grace
       const isRestoring = restoringRef.current;
+
+      // Detect restore completion → extend grace
       if (wasRestoringRef.current && !isRestoring) {
         ignoreUntilRef.current = now + GRACE_MS;
       }
       wasRestoringRef.current = isRestoring;
 
-      console.log("[ownership check]", {
-        scrollTop: currentScrollTop,
-        delta,
-        scrollingUp,
-        significantMove,
-        atBottom,
-        restoring: isRestoring,
-        userRecentlyInteracted,
-        inGraceWindow,
-      });
+      /* ------------------------------------------------------------
+         🔥 Projection Signal (independent of machine transition)
+      ------------------------------------------------------------ */
 
-      // Suppress during machine restore
+      if (
+        scrollingUp &&
+        significantMove &&
+        userRecentlyInteracted &&
+        !isRestoring
+      ) {
+        setIsUserScrollingUp(true);
+      } else {
+        setIsUserScrollingUp(false);
+      }
+
+      /* ------------------------------------------------------------
+         Suppress ownership transitions during restore
+      ------------------------------------------------------------ */
+
       if (isRestoring) return;
 
       /* ------------------------------------------------------------
@@ -120,7 +131,7 @@ export function useScrollOwnership(
       if (atBottom) {
         if (lastAtBottomRef.current !== true) {
           lastAtBottomRef.current = true;
-          ignoreUntilRef.current = now + GRACE_MS; // small buffer
+          ignoreUntilRef.current = now + GRACE_MS;
           send({ type: "USER_AT_BOTTOM" });
         }
       }
@@ -138,4 +149,6 @@ export function useScrollOwnership(
       el.removeEventListener("scroll", checkOwnership);
     };
   }, [send, scrollRef, restoringRef]);
+
+  return isUserScrollingUp;
 }

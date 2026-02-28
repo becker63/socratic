@@ -59,7 +59,7 @@ export function App({ inspector }: { inspector?: any }) {
       ? state.value.scroll
       : "machineOwned";
 
-  // 🔥 Trigger auto-scroll on layoutVersion change
+  // Auto-scroll imperative layer
   const restoringRef = useAutoScroll(
     scrollRef,
     layoutVersion,
@@ -67,13 +67,16 @@ export function App({ inspector }: { inspector?: any }) {
     layoutReady,
   );
 
+  // Control-plane ownership detection
+  useScrollOwnership(send, scrollRef, restoringRef);
+
+  // Visual projection layer
   const { intensity } = useGradientProjection(
-    observerMetrics,
+    scrollRef,
     layoutReady,
     scrollOwner,
+    restoringRef,
   );
-
-  useScrollOwnership(send, scrollRef, restoringRef);
 
   return (
     <Box
